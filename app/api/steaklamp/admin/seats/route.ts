@@ -81,10 +81,12 @@ export async function POST(req: Request) {
       };
     });
 
-    const existingRows = normalized.filter((row) => row.id);
-    const newRows = normalized
-      .filter((row) => !row.id)
-      .map(({ id, ...rest }) => rest);
+    const existingRows = normalized.filter((row: any) => row.id);
+
+const newRows = normalized
+  .filter((row: any) => !row.id)
+  .map(({ id, ...rest }: any) => rest);
+
 
     if (existingRows.length > 0) {
       const { error: updateError } = await supabaseAdmin
