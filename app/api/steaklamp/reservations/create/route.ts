@@ -56,11 +56,15 @@ async function sendReservationEmails({
 }) {
   if (!resend) return;
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
-  const cancelUrl = `${siteUrl}/steaklamp/reserve/cancel?token=${cancelToken}`;
+  const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  "https://steaklamp-m2og.vercel.app";
+
+const cancelUrl = `${siteUrl}/steaklamp/reserve/cancel?token=${cancelToken}`;
+
 
   const from =
-    process.env.STEAKLAMP_FROM_EMAIL ?? "Steak Lamp <lamp@japanblue.net>";
+    process.env.STEAKLAMP_FROM_EMAIL ?? "Passion for Grilling Lamp <lamp@japanblue.net>";
 
   const storeEmail = process.env.STEAKLAMP_STORE_EMAIL ?? "lamp@japanblue.net";
 
@@ -79,7 +83,7 @@ async function sendReservationEmails({
 
   const customerHtml = `
     <div style="font-family: sans-serif; line-height: 1.8; color: #222;">
-      <h2>【Steak Lamp】ご予約ありがとうございます</h2>
+      <h2>【Passion for Grilling Lamp】ご予約ありがとうございます</h2>
 
       <p>${reservation.name} 様</p>
 
@@ -108,7 +112,7 @@ async function sendReservationEmails({
 
   const storeHtml = `
     <div style="font-family: sans-serif; line-height: 1.8; color: #222;">
-      <h2>【Steak Lamp】新しい予約が入りました</h2>
+      <h2>【Passion for Grilling Lamp】新しい予約が入りました</h2>
 
       <table style="border-collapse: collapse; line-height: 1.8;">
         <tr><td style="padding-right:16px;">名前</td><td>${reservation.name}</td></tr>
@@ -132,7 +136,7 @@ async function sendReservationEmails({
     await resend.emails.send({
       from,
       to: reservation.email,
-      subject: "【Steak Lamp】ご予約を承りました",
+      subject: "【Passin for Grilling Lamp】ご予約を承りました",
       html: customerHtml,
     });
   }
@@ -141,7 +145,7 @@ async function sendReservationEmails({
     await resend.emails.send({
       from,
       to: storeEmail,
-      subject: "【Steak Lamp】新しい予約が入りました",
+      subject: "【Passin for Grilling Lamp】新しい予約が入りました",
       html: storeHtml,
     });
   }
