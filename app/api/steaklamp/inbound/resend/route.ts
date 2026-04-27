@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import { importHotpepperReservationFromText } from "@/lib/inbound/hotpepper-import";
+import { importHotpepperReservationFromText } from "@/steaklamp/lib/inbound/hotpepper-import";
 
 export const runtime = "nodejs";
 
