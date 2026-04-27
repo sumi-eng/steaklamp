@@ -41,6 +41,26 @@ function maxCap(seat: SeatRow) {
   return Number(seat.max_persons ?? seat.capacity_max ?? 99);
 }
 
+// 親席IDではなく、実際に使う物理席IDだけに展開する
+function expandPhysicalSeatIds(seatId: string, members: SeatMemberRow[]) {
+  const childIds = members
+    .filter((m) => String(m.group_seat_id) === String(seatId))
+    .map((m) => String(m.member_seat_id));
+
+  if (childIds.length > 0) {
+    return new Set(childIds);
+  }
+
+  return new Set([String(seatId)]);
+}
+
+function hasSeatConflict(a: Set<string>, b: Set<string>) {
+  for (const id of a) {
+    if (b.has(id)) return true;
+  }
+  return false;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -106,6 +126,24 @@ export async function POST(req: Request) {
         return String(a.name).localeCompare(String(b.name), "ja");
       });
 
+    const { data: seatMembers, error: seatMembersError } = await supabaseAdmin
+      .from("seat_members")
+      .select("group_seat_id, member_seat_id");
+
+    if (seatMembersError) {
+      console.error("seatMembersError", seatMembersError);
+      return json(
+        {
+          ok: false,
+          error: "seat_members_load_failed",
+          detail: seatMembersError.message,
+        },
+        500
+      );
+    }
+
+    const members = (seatMembers ?? []) as SeatMemberRow[];
+
     const { data: reservations, error: reservationsError } = await supabaseAdmin
       .from("reservations")
       .select("*")
@@ -125,37 +163,29 @@ export async function POST(req: Request) {
       );
     }
 
-    const conflictSeatIds = new Set<string>();
+    // 予約済みの「実際に使っている物理席」だけを集める
+    const occupiedPhysicalSeatIds = new Set<string>();
 
     for (const r of reservations ?? []) {
       if (!r.seat_id || !r.start_at) continue;
-      if (["cancelled", "finished", "no_show"].includes(String(r.status))) continue;
+      if (["cancelled", "finished", "no_show"].includes(String(r.status))) {
+        continue;
+      }
 
       const rStart = new Date(r.start_at);
       const rEnd = addMinutes(rStart, Number(r.duration_minutes ?? 120));
 
-      if (overlaps(startAt, endAt, rStart, rEnd)) {
-        conflictSeatIds.add(String(r.seat_id));
+      if (!overlaps(startAt, endAt, rStart, rEnd)) continue;
+
+      const reservedPhysicalSeatIds = expandPhysicalSeatIds(
+        String(r.seat_id),
+        members
+      );
+
+      for (const id of reservedPhysicalSeatIds) {
+        occupiedPhysicalSeatIds.add(id);
       }
     }
-
-    const { data: seatMembers, error: seatMembersError } = await supabaseAdmin
-      .from("seat_members")
-      .select("group_seat_id, member_seat_id");
-
-    if (seatMembersError) {
-      console.error("seatMembersError", seatMembersError);
-      return json(
-        {
-          ok: false,
-          error: "seat_members_load_failed",
-          detail: seatMembersError.message,
-        },
-        500
-      );
-    }
-
-    const members = (seatMembers ?? []) as SeatMemberRow[];
 
     const physicalNameById = new Map(
       typedSeats.map((s) => [String(s.id), String(s.name)])
@@ -167,28 +197,28 @@ export async function POST(req: Request) {
 
         const isPhysicalTableSeat = /^T\d+-\d+$/.test(seatName);
         const isCounterSeat = /^C\d+$/.test(seatName);
+        const isCounterGroupSeat = /^C-\d+/.test(seatName);
 
         // T1-1 / T1-2 などの物理テーブル席は予約候補に出さない
+        // 予約は「右テーブル」「中テーブル」「左テーブル」「右8名席」などで取る
         if (isPhysicalTableSeat) return false;
 
-        // カウンターは「カウンター席でも可」のときだけ候補に出す
-        if (!counterOk && isCounterSeat) return false;
+        // カウンター席・カウンター連結席は「カウンター席でも可」のときだけ候補に出す
+        if (!counterOk && (isCounterSeat || isCounterGroupSeat)) return false;
+
+        // 1名予約では C-45 / C-78 / C-678 / C-3456 などのカウンター連結席は出さない
+        if (persons <= 1 && isCounterGroupSeat) return false;
 
         if (persons < minCap(seat) || persons > maxCap(seat)) return false;
-        if (conflictSeatIds.has(String(seat.id))) return false;
 
-const isCounterGroupSeat = /^C-\d+/.test(seatName);
+        const candidatePhysicalSeatIds = expandPhysicalSeatIds(
+          String(seat.id),
+          members
+        );
 
-// 1名予約では C-45 / C-78 / C-678 / C-3456 などのカウンター連結席は出さない
-if (persons <= 1 && isCounterGroupSeat) return false;
-
-
-        const memberIds = members
-          .filter((m) => String(m.group_seat_id) === String(seat.id))
-          .map((m) => String(m.member_seat_id));
-
-        for (const memberId of memberIds) {
-          if (conflictSeatIds.has(memberId)) return false;
+        // 親席IDではなく、物理席同士で重複判定する
+        if (hasSeatConflict(candidatePhysicalSeatIds, occupiedPhysicalSeatIds)) {
+          return false;
         }
 
         return true;

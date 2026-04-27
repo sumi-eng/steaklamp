@@ -39,21 +39,22 @@ function formatDateTimeJp(value: string) {
   });
 }
 
+type SeatMemberRow = {
+  group_seat_id: string;
+  member_seat_id: string;
+};
 
-function expandSeatIds(
-  seatId: string,
-  members: Array<{ group_seat_id: string; member_seat_id: string }>
-) {
-  const ids = new Set<string>();
-  ids.add(String(seatId));
+// 親席IDではなく、実際に使う物理席IDだけに展開する
+function expandPhysicalSeatIds(seatId: string, members: SeatMemberRow[]) {
+  const childIds = members
+    .filter((m) => String(m.group_seat_id) === String(seatId))
+    .map((m) => String(m.member_seat_id));
 
-  for (const m of members) {
-    if (String(m.group_seat_id) === String(seatId)) {
-      ids.add(String(m.member_seat_id));
-    }
+  if (childIds.length > 0) {
+    return new Set(childIds);
   }
 
-  return ids;
+  return new Set([String(seatId)]);
 }
 
 function hasSeatConflict(a: Set<string>, b: Set<string>) {
@@ -62,7 +63,6 @@ function hasSeatConflict(a: Set<string>, b: Set<string>) {
   }
   return false;
 }
-
 
 function formatPrice(value: unknown) {
   const n = Number(value ?? 0);
@@ -82,14 +82,13 @@ async function sendReservationEmails({
   if (!resend) return;
 
   const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ||
-  "https://steaklamp-m2og.vercel.app";
+    process.env.NEXT_PUBLIC_SITE_URL || "https://steaklamp-m2og.vercel.app";
 
-const cancelUrl = `${siteUrl}/steaklamp/reserve/cancel?token=${cancelToken}`;
-
+  const cancelUrl = `${siteUrl}/steaklamp/reserve/cancel?token=${cancelToken}`;
 
   const from =
-    process.env.STEAKLAMP_FROM_EMAIL ?? "Passion for Grilling Lamp <lamp@japanblue.net>";
+    process.env.STEAKLAMP_FROM_EMAIL ??
+    "Passion for Grilling Lamp <lamp@japanblue.net>";
 
   const storeEmail = process.env.STEAKLAMP_STORE_EMAIL ?? "lamp@japanblue.net";
 
@@ -100,10 +99,7 @@ const cancelUrl = `${siteUrl}/steaklamp/reserve/cancel?token=${cancelToken}`;
     ? formatPrice(reservation.course_price_snapshot)
     : "";
 
-  const courseText = coursePrice
-    ? `${courseName}（${coursePrice}）`
-    : courseName;
-
+  const courseText = coursePrice ? `${courseName}（${coursePrice}）` : courseName;
   const notesText = reservation.notes || "なし";
 
   const customerHtml = `
@@ -161,7 +157,7 @@ const cancelUrl = `${siteUrl}/steaklamp/reserve/cancel?token=${cancelToken}`;
     await resend.emails.send({
       from,
       to: reservation.email,
-      subject: "【Passin for Grilling Lamp】ご予約を承りました",
+      subject: "【Passion for Grilling Lamp】ご予約を承りました",
       html: customerHtml,
     });
   }
@@ -170,7 +166,7 @@ const cancelUrl = `${siteUrl}/steaklamp/reserve/cancel?token=${cancelToken}`;
     await resend.emails.send({
       from,
       to: storeEmail,
-      subject: "【Passin for Grilling Lamp】新しい予約が入りました",
+      subject: "【Passion for Grilling Lamp】新しい予約が入りました",
       html: storeHtml,
     });
   }
@@ -182,17 +178,17 @@ export async function POST(req: Request) {
 
     const name = String(body.name ?? "").trim();
     const phone = String(body.phone ?? "").trim();
-const phoneDigits = phone.replace(/[^\d]/g, "");
+    const phoneDigits = phone.replace(/[^\d]/g, "");
 
-if (phoneDigits.length < 10 || phoneDigits.length > 11) {
-  return json(
-    {
-      ok: false,
-      error: "電話番号は10桁または11桁で入力してください",
-    },
-    400
-  );
-}
+    if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+      return json(
+        {
+          ok: false,
+          error: "電話番号は10桁または11桁で入力してください",
+        },
+        400
+      );
+    }
 
     const email = body.email ? String(body.email).trim() : null;
     const persons = Number(body.persons ?? 0);
@@ -243,13 +239,12 @@ if (phoneDigits.length < 10 || phoneDigits.length > 11) {
       );
     }
 
-    const { data: reservations, error: reservationsError } =
-      await supabaseAdmin
-        .from("reservations")
-        .select("*")
-        .eq("store_id", store.id)
-        .gte("start_at", addMinutes(startAt, -240).toISOString())
-        .lte("start_at", addMinutes(endAt, 240).toISOString());
+    const { data: reservations, error: reservationsError } = await supabaseAdmin
+      .from("reservations")
+      .select("*")
+      .eq("store_id", store.id)
+      .gte("start_at", addMinutes(startAt, -240).toISOString())
+      .lte("start_at", addMinutes(endAt, 240).toISOString());
 
     if (reservationsError) {
       return json(
@@ -261,31 +256,26 @@ if (phoneDigits.length < 10 || phoneDigits.length > 11) {
         500
       );
     }
-const { data: seatMembers, error: seatMembersError } = await supabaseAdmin
-  .from("seat_members")
-  .select("group_seat_id, member_seat_id");
 
-if (seatMembersError) {
-  return json(
-    {
-      ok: false,
-      error: "seat_members_load_failed",
-      detail: seatMembersError.message,
-    },
-    500
-  );
-}
+    const { data: seatMembers, error: seatMembersError } = await supabaseAdmin
+      .from("seat_members")
+      .select("group_seat_id, member_seat_id");
 
-const members = (seatMembers ?? []) as Array<{
-  group_seat_id: string;
-  member_seat_id: string;
-}>;
+    if (seatMembersError) {
+      return json(
+        {
+          ok: false,
+          error: "seat_members_load_failed",
+          detail: seatMembersError.message,
+        },
+        500
+      );
+    }
 
-const targetSeatIds = expandSeatIds(seatId, members);
+    const members = (seatMembers ?? []) as SeatMemberRow[];
+    const targetPhysicalSeatIds = expandPhysicalSeatIds(seatId, members);
 
-    
-
-for (const r of reservations ?? []) {
+    for (const r of reservations ?? []) {
       if (!r.start_at || !r.seat_id) continue;
       if (["cancelled", "finished", "no_show"].includes(String(r.status))) {
         continue;
@@ -294,20 +284,22 @@ for (const r of reservations ?? []) {
       const rStart = new Date(r.start_at);
       const rEnd = addMinutes(rStart, Number(r.duration_minutes ?? 120));
 
-     if (overlaps(startAt, endAt, rStart, rEnd)) {
-  const reservedSeatIds = expandSeatIds(String(r.seat_id), members);
+      if (!overlaps(startAt, endAt, rStart, rEnd)) continue;
 
-  if (hasSeatConflict(targetSeatIds, reservedSeatIds)) {
-    return json(
-      {
-        ok: false,
-        error: "この席はすでに予約されています",
-      },
-      400
-    );
-  }
-}
+      const reservedPhysicalSeatIds = expandPhysicalSeatIds(
+        String(r.seat_id),
+        members
+      );
 
+      if (hasSeatConflict(targetPhysicalSeatIds, reservedPhysicalSeatIds)) {
+        return json(
+          {
+            ok: false,
+            error: "この席はすでに予約されています",
+          },
+          400
+        );
+      }
     }
 
     const cancelToken = createCancelToken();
