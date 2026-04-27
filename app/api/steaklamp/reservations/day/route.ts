@@ -15,8 +15,10 @@ function toDateKey(d: Date) {
 }
 
 function toTime(d: Date) {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(
-    d.getMinutes()
+  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+
+  return `${String(jst.getUTCHours()).padStart(2, "0")}:${String(
+    jst.getUTCMinutes()
   ).padStart(2, "0")}`;
 }
 
