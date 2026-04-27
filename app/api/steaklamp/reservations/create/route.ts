@@ -39,6 +39,31 @@ function formatDateTimeJp(value: string) {
   });
 }
 
+
+function expandSeatIds(
+  seatId: string,
+  members: Array<{ group_seat_id: string; member_seat_id: string }>
+) {
+  const ids = new Set<string>();
+  ids.add(String(seatId));
+
+  for (const m of members) {
+    if (String(m.group_seat_id) === String(seatId)) {
+      ids.add(String(m.member_seat_id));
+    }
+  }
+
+  return ids;
+}
+
+function hasSeatConflict(a: Set<string>, b: Set<string>) {
+  for (const id of a) {
+    if (b.has(id)) return true;
+  }
+  return false;
+}
+
+
 function formatPrice(value: unknown) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n) || n <= 0) return "";
@@ -157,6 +182,18 @@ export async function POST(req: Request) {
 
     const name = String(body.name ?? "").trim();
     const phone = String(body.phone ?? "").trim();
+const phoneDigits = phone.replace(/[^\d]/g, "");
+
+if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+  return json(
+    {
+      ok: false,
+      error: "電話番号は10桁または11桁で入力してください",
+    },
+    400
+  );
+}
+
     const email = body.email ? String(body.email).trim() : null;
     const persons = Number(body.persons ?? 0);
     const startAtRaw = String(body.startAt ?? "");
@@ -224,8 +261,31 @@ export async function POST(req: Request) {
         500
       );
     }
+const { data: seatMembers, error: seatMembersError } = await supabaseAdmin
+  .from("seat_members")
+  .select("group_seat_id, member_seat_id");
 
-    for (const r of reservations ?? []) {
+if (seatMembersError) {
+  return json(
+    {
+      ok: false,
+      error: "seat_members_load_failed",
+      detail: seatMembersError.message,
+    },
+    500
+  );
+}
+
+const members = (seatMembers ?? []) as Array<{
+  group_seat_id: string;
+  member_seat_id: string;
+}>;
+
+const targetSeatIds = expandSeatIds(seatId, members);
+
+    
+
+for (const r of reservations ?? []) {
       if (!r.start_at || !r.seat_id) continue;
       if (["cancelled", "finished", "no_show"].includes(String(r.status))) {
         continue;
@@ -234,17 +294,20 @@ export async function POST(req: Request) {
       const rStart = new Date(r.start_at);
       const rEnd = addMinutes(rStart, Number(r.duration_minutes ?? 120));
 
-      if (overlaps(startAt, endAt, rStart, rEnd)) {
-        if (String(r.seat_id) === seatId) {
-          return json(
-            {
-              ok: false,
-              error: "この席はすでに予約されています",
-            },
-            400
-          );
-        }
-      }
+     if (overlaps(startAt, endAt, rStart, rEnd)) {
+  const reservedSeatIds = expandSeatIds(String(r.seat_id), members);
+
+  if (hasSeatConflict(targetSeatIds, reservedSeatIds)) {
+    return json(
+      {
+        ok: false,
+        error: "この席はすでに予約されています",
+      },
+      400
+    );
+  }
+}
+
     }
 
     const cancelToken = createCancelToken();
