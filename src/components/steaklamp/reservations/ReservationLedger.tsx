@@ -494,12 +494,19 @@ setCalendarMeta(map);
                     }}
                   >
                     <div className="text-[12px] font-semibold leading-tight text-rose-700">
-                      {reservation.start} {reservation.persons}名 {reservation.seatName}
-                    </div>
+  {reservation.start} {reservation.persons}名 {reservation.seatName}
+</div>
 
-                    <div className="mt-1 truncate text-[14px] font-bold leading-tight">
-                      {reservation.title}
-                    </div>
+<div className="mt-1 text-[14px] font-bold leading-tight">
+  {reservation.title}
+</div>
+
+{reservation.notes ? (
+  <div className="mt-2 whitespace-pre-wrap break-words rounded-xl bg-white/70 px-2 py-1 text-[13px] font-semibold leading-snug text-rose-700">
+    備考：{reservation.notes}
+  </div>
+) : null}
+
                   </div>
                 );
               })}
