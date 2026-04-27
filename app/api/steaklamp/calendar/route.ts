@@ -201,7 +201,7 @@ const todayKey = todayJstDateKey();
       const weekday = d.getDay();
       const bh = hoursByWeekday.get(weekday);
 
-acif (dateKey < todayKey) {
+if (dateKey < todayKey) {
   days[dateKey] = {
     status: "closed",
     count: 0,
