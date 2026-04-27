@@ -330,6 +330,13 @@ export default function SteaklampReservePage() {
     if (!phone.trim()) return "電話番号を入力してください。";
     if (!date) return "日付を選択してください。";
 if (!time) return "時間を選択してください。";
+const now = new Date();
+const selected = new Date(`${date}T${time}:00+09:00`);
+
+if (selected < now) {
+  return "過去の日時は選択できません。";
+}
+
 
 if (!timeLoading && timeOptions.length > 0 && !timeOptions.includes(time)) {
   return "この条件ではご予約いただけません。人数または時間を変更してください。";

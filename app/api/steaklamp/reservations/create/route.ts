@@ -211,6 +211,16 @@ export async function POST(req: Request) {
       return json({ ok: false, error: "invalid_startAt" }, 400);
     }
 
+const now = new Date();
+
+if (startAt < now) {
+  return json(
+    { ok: false, error: "過去の日時には予約できません" },
+    400
+  );
+}
+
+
     const endAt = addMinutes(startAt, duration);
 
     const { data: store, error: storeError } = await supabaseAdmin

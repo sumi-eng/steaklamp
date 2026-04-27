@@ -15,6 +15,13 @@ function formatDateKey(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+function todayJstDateKey() {
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().slice(0, 10);
+}
+
+
 function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60_000);
 }
@@ -75,6 +82,9 @@ export async function GET(req: Request) {
 
     const monthStart = new Date(year, monthNum - 1, 1);
     const monthEnd = new Date(year, monthNum, 0);
+
+const todayKey = todayJstDateKey();
+
 
     const { data: store, error: storeError } = await supabaseAdmin
       .from("stores")
@@ -190,6 +200,16 @@ export async function GET(req: Request) {
       const dateKey = formatDateKey(d);
       const weekday = d.getDay();
       const bh = hoursByWeekday.get(weekday);
+
+acif (dateKey < todayKey) {
+  days[dateKey] = {
+    status: "closed",
+    count: 0,
+    isClosed: true,
+  };
+  continue;
+}
+
 
       const isClosed = Boolean(bh?.is_closed) || closedDates.has(dateKey);
 
