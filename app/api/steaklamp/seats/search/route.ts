@@ -211,6 +211,13 @@ export async function POST(req: Request) {
 
         if (persons < minCap(seat) || persons > maxCap(seat)) return false;
 
+const isSixSeatGroup =
+  seatName === "右6名席" ||
+  seatName === "左6名席";
+
+if (persons >= 6 && isSixSeatGroup) return false;
+
+
         const candidatePhysicalSeatIds = expandPhysicalSeatIds(
           String(seat.id),
           members
