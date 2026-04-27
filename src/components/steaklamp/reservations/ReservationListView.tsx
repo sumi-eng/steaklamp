@@ -21,6 +21,7 @@ function formatJP(dateKey: string) {
 
 type Reservation = {
   id: string;
+  seatId: string;
   name: string;
   persons: number;
   startAt: string;
