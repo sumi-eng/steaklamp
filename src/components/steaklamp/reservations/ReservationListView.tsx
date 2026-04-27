@@ -208,7 +208,7 @@ function openDatePicker() {
           <ReservationDetailModal
             reservation={{
               id: selected.id,
-seatId: selected.seat_Id,
+seatId: (selected as any).seat_id ?? selected.seatId ?? "",
               title: selected.name,
               name: selected.name,
               phone: selected.phone,
