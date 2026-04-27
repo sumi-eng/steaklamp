@@ -96,11 +96,14 @@ if (!toText.includes("hp-steak@phecoreer.resend.app")) {
       emailId,
       result,
     });
-  } catch (e: any) {
-    console.error("STEAKLAMP_RESEND_INBOUND_FATAL =", e);
-    return NextResponse.json(
-      { ok: false, error: e?.message ?? String(e) },
-      { status: 500 }
-    );
-  }
+ } catch (e: any) {
+  console.error("STEAKLAMP_ERROR_DETAIL =", e);
+  console.error("STACK =", e?.stack);
+
+  return NextResponse.json(
+    { ok: false, error: e?.message ?? String(e) },
+    { status: 500 }
+  );
+}
+
 }
