@@ -284,13 +284,14 @@ export default function SteaklampReservePage() {
         const available = checks.filter(Boolean) as string[];
 
         if (!cancelled) {
-          setTimeOptions(available);
-          if (available.length === 0) {
-            setTime("");
-          } else if (!available.includes(time)) {
-            setTime(available[0]);
-          }
-        }
+  setTimeOptions(available);
+
+  // 重要：
+  // 人数変更などで選択中の時間が満席になっても、
+  // 勝手に別の時間へ変更しない。
+  // 予約確定時にエラーを出す。
+}
+
       } catch {
         if (!cancelled) setTimeOptions([]);
       } finally {
@@ -328,8 +329,14 @@ export default function SteaklampReservePage() {
     if (!guestName.trim()) return "お名前を入力してください。";
     if (!phone.trim()) return "電話番号を入力してください。";
     if (!date) return "日付を選択してください。";
-    if (!time) return "時間を選択してください。";
-    if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してください。";
+if (!time) return "時間を選択してください。";
+
+if (!timeLoading && timeOptions.length > 0 && !timeOptions.includes(time)) {
+  return "選択中の時間では必要なお席が不足しています。別の時間を選択してください。";
+}
+
+if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してください。";
+
     if (!isValidEmail(email.trim())) return "メールアドレスの形式をご確認ください。";
     if (persons >= 13) return "13名以上のご予約はお電話でお問い合わせください。";
     if (date < minDate) return "受付期限を過ぎています。";
@@ -620,11 +627,18 @@ export default function SteaklampReservePage() {
                     </option>
                   ) : null}
 
-                  {timeOptions.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
+                  {time && !timeOptions.includes(time) ? (
+  <option value={time}>
+    {time}（この人数では空席不足）
+  </option>
+) : null}
+
+{timeOptions.map((t) => (
+  <option key={t} value={t}>
+    {t}
+  </option>
+))}
+
                 </select>
               </div>
 
