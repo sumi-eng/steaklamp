@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/steaklamp/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
 type ReservationHistoryRow = {
   id: string;
