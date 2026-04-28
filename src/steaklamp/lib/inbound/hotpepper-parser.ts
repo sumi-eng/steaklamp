@@ -67,6 +67,12 @@ export function parseHotpepperReservationMail(text: string) {
     getBlock("ご要望") ||
     "";
 
+const questionAnswerText =
+  getBlock("質問の回答") ||
+  getBlock("質問回答") ||
+  "";
+
+
   return {
     mailType: detectType(),
     externalId: get("予約依頼番号"),
@@ -79,6 +85,8 @@ export function parseHotpepperReservationMail(text: string) {
     seatLabel: get("席情報"),
     requestText,
     rawText: normalized,
+questionAnswerText,
+
   };
 }
 

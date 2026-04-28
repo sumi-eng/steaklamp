@@ -338,10 +338,11 @@ export async function importHotpepperReservationFromText(args: {
 
   const noteLines = [
     "ホットペッパー予約",
-    parsed.reservationRoute ? `予約経路: ${parsed.reservationRoute}` : null,
-    parsed.seatLabel ? `席情報: ${parsed.seatLabel}` : null,
+        parsed.seatLabel ? `席情報: ${parsed.seatLabel}` : null,
     parsed.planName ? `メールコース名: ${parsed.planName}` : null,
-    parsed.requestText ? `ご要望事項:\n${parsed.requestText}` : null,
+    parsed.questionAnswerText ? `質問の回答:\n${parsed.questionAnswerText}` : null,
+  parsed.requestText ? `ご要望事項:\n${parsed.requestText}` : null,
+
   ].filter(Boolean);
 
   const payload = {
