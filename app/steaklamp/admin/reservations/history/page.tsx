@@ -140,7 +140,7 @@ export default function ReservationHistoryPage() {
       if (reservationsRes.error) throw reservationsRes.error;
       if (seatsRes.error) throw seatsRes.error;
 
-      setRows((reservationsRes.data ?? []);
+      setRows(reservationsRes.data ?? []);
       setSeats((seatsRes.data ?? []) as SeatRow[]);
     } catch (e: any) {
       setErr(e?.message ?? String(e));
