@@ -282,29 +282,36 @@ setCalendarMeta(map);
             {formatJapaneseDate(dateKey)}
           </button>
 
-          <button
-            type="button"
-            onClick={() => setDateKey(addDays(dateKey, -1))}
-            className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
-          >
-            前日
-          </button>
+<a
+  href="/steaklamp/admin/reservations/history"
+  className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold"
+>
+  予約一覧
+</a>
 
-          <button
-            type="button"
-            onClick={() => setDateKey(formatDateKey(new Date()))}
-            className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
-          >
-            今日
-          </button>
+<button
+  type="button"
+  onClick={() => setDateKey(addDays(dateKey, -1))}
+  className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold"
+>
+  前日
+</button>
 
-          <button
-            type="button"
-            onClick={() => setDateKey(addDays(dateKey, 1))}
-            className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
-          >
-            翌日
-          </button>
+<button
+  type="button"
+  onClick={() => setDateKey(formatDateKey(new Date()))}
+  className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold"
+>
+  今日
+</button>
+
+<button
+  type="button"
+  onClick={() => setDateKey(addDays(dateKey, 1))}
+  className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold"
+>
+  翌日
+</button>
 
           {loading && <div className="ml-2 text-sm text-stone-500">読み込み中...</div>}
 
