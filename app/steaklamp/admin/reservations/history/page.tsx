@@ -154,7 +154,8 @@ export default function SteaklampReservationHistoryPage() {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (!qq) return true;
 
-      const seatName = r.seat_id ? seatMap.get(r.seat_id) ?? "" : "";
+     const seatName = String((r as any).seat_name ?? "");
+
 
       return (
         String(r.name ?? "").toLowerCase().includes(qq) ||
@@ -163,7 +164,7 @@ export default function SteaklampReservationHistoryPage() {
         String(seatName).toLowerCase().includes(qq)
       );
     });
-  }, [rows, q, statusFilter, seatMap]);
+  }, [rows, q, statusFilter]);
 
   return (
     <div className="min-h-screen bg-zinc-950 p-4 text-zinc-100">
@@ -279,7 +280,8 @@ export default function SteaklampReservationHistoryPage() {
                         {r.persons ?? "—"}名
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
-                        {r.seat_id ? seatMap.get(r.seat_id) ?? "—" : "—"}
+                        {(r as any).seat_name || "—"}
+
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         {sourceLabel(r)}
