@@ -117,71 +117,36 @@ export default function SteaklampReservationHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [rows, setRows] = useState<ReservationRow[]>([]);
-  const [seats, setSeats] = useState<SeatRow[]>([]);
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
   async function refresh() {
-    setLoading(true);
-    setErr(null);
+  setLoading(true);
+  setErr(null);
 
-    try {
-      const reservationsRes = await supabase
-        .from("reservations")
-        .select(`
-          id,
-          store_id,
-          seat_id,
-          name,
-          phone,
-          email,
-          persons,
-          start_at,
-          duration_minutes,
-          status,
-          notes,
-          source,
-          course_name_snapshot,
-          course_price_snapshot,
-          created_at,
-          updated_at,
-          cancelled_at,
-          external_source,
-          external_reservation_id
-        `)
-        .eq("store_id", STEAKLAMP_STORE_ID)
-        .order("created_at", { ascending: false })
-        .limit(500);
+  try {
+    const res = await fetch(
+      "/api/steaklamp/reservations/history",
+      { cache: "no-store" }
+    );
 
-      if (reservationsRes.error) throw reservationsRes.error;
+    const data = await res.json();
 
-      const seatsRes = await supabase
-        .from("seats")
-        .select("id, name")
-        .eq("store_id", STEAKLAMP_STORE_ID)
-        .order("sort_order", { ascending: true });
+    if (!data.ok) throw new Error(data.error);
 
-      if (seatsRes.error) throw seatsRes.error;
-
-      setRows((reservationsRes.data ?? []) as ReservationRow[]);
-      setSeats((seatsRes.data ?? []) as SeatRow[]);
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    } finally {
-      setLoading(false);
-    }
+    setRows(data.items || []);
+  } catch (e: any) {
+    setErr(e.message);
+  } finally {
+    setLoading(false);
   }
+}
 
   useEffect(() => {
     refresh();
   }, []);
 
-  const seatMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const s of seats) m.set(String(s.id), s.name);
-    return m;
-  }, [seats]);
-
+ 
   const filteredRows = useMemo(() => {
     const qq = q.trim().toLowerCase();
 
