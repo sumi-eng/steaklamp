@@ -337,7 +337,6 @@ export async function importHotpepperReservationFromText(args: {
   }
 
   const noteLines = [
-    "ホットペッパー予約",
         parsed.seatLabel ? `席情報: ${parsed.seatLabel}` : null,
     parsed.planName ? `メールコース名: ${parsed.planName}` : null,
     parsed.questionAnswerText ? `質問の回答:\n${parsed.questionAnswerText}` : null,
