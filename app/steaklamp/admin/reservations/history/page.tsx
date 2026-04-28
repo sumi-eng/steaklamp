@@ -15,19 +15,17 @@ const supabase = createClient(
 type ReservationHistoryRow = {
   id: string;
   seat_id: string;
-  name: string | null;
-  phone: string | null;
-  persons: number | null;
-  start_at: string;
-  end_at: string;
-  status: string;
-  notes: string | null;
-  source: string | null;
-  reservation_plan_name_snapshot: string | null;
-  reservation_plan_price_snapshot: number | null;
-  created_at: string | null;
-  updated_at: string | null;
-  cancelled_at: string | null;
+  name?: string | null;
+  phone?: string | null;
+  persons?: number | null;
+  start_at?: string;
+  end_at?: string | null;
+  status?: string;
+  notes?: string | null;
+  source?: string | null;
+  reservation_plan_name_snapshot?: string | null;
+  created_at?: string | null;
+  cancelled_at?: string | null;
 };
 
 type SeatRow = {
@@ -142,7 +140,7 @@ export default function ReservationHistoryPage() {
       if (reservationsRes.error) throw reservationsRes.error;
       if (seatsRes.error) throw seatsRes.error;
 
-      setRows((reservationsRes.data ?? []) as ReservationHistoryRow[]);
+      setRows((reservationsRes.data ?? []);
       setSeats((seatsRes.data ?? []) as SeatRow[]);
     } catch (e: any) {
       setErr(e?.message ?? String(e));
