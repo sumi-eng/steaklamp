@@ -340,7 +340,7 @@ export async function importHotpepperReservationFromText(args: {
     "ホットペッパー予約",
         parsed.seatLabel ? `席情報: ${parsed.seatLabel}` : null,
     parsed.planName ? `メールコース名: ${parsed.planName}` : null,
-    parsed.questionAnswerText ? `質問の回答:\n${parsed.questionAnswerText}` : null,
+    parsed.questionAnswerText ? `苦手なもの・アレルギー:${parsed.questionAnswerText}` : null,
   parsed.requestText ? `ご要望事項:\n${parsed.requestText}` : null,
 
   ].filter(Boolean);
