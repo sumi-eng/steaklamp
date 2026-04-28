@@ -23,6 +23,29 @@ function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
+function toJstDate(raw: string) {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+
+  // すでに Z や +09:00 が付いている場合はそのまま
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(value)) {
+    return new Date(value);
+  }
+
+  // 2026-04-30T19:00 → 2026-04-30T19:00:00+09:00
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
+    return new Date(`${value}:00+09:00`);
+  }
+
+  // 2026-04-30T19:00:00 → 2026-04-30T19:00:00+09:00
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value)) {
+    return new Date(`${value}+09:00`);
+  }
+
+  return new Date(value);
+}
+
+
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
 }
@@ -206,10 +229,12 @@ export async function POST(req: Request) {
       return json({ ok: false, error: "missing_params" }, 400);
     }
 
-    const startAt = new Date(startAtRaw);
-    if (Number.isNaN(startAt.getTime())) {
-      return json({ ok: false, error: "invalid_startAt" }, 400);
-    }
+    const startAt = toJstDate(startAtRaw);
+
+if (!startAt || Number.isNaN(startAt.getTime())) {
+  return json({ ok: false, error: "invalid_startAt", startAtRaw }, 400);
+}
+
 
 const now = new Date();
 
