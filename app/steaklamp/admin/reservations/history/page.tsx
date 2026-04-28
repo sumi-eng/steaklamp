@@ -122,7 +122,7 @@ export default function ReservationHistoryPage() {
   `)
   .eq("store_id", "368af618-50ed-472f-b631-6affd46b45f3") // ←追加
   .order("created_at", { ascending: false })
-  .limit(500)
+  .limit(500),
 
 
         supabase
