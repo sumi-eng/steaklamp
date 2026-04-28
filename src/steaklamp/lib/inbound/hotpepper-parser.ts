@@ -20,12 +20,11 @@ function extractQuestionAnswerText(text: string) {
   const block = normalizeMultilineValue(m?.[1] ?? "");
   if (!block) return "";
 
-  const answer = block.match(/A[\.．：:]\s*([^\n]+)/);
-  if (answer?.[1]) return answer[1].trim();
+  const answer = block.match(/A[\.．：:]\s*([^\n]*)/);
+  if (!answer) return "";
 
-  return block;
+  return answer[1].trim();
 }
-
 
 export function parseHotpepperReservationMail(text: string) {
   const normalized = text.replace(/\r\n/g, "\n");
