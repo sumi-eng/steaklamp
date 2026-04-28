@@ -12,6 +12,21 @@ function cleanLine(value: string) {
   return value.replace(/^[ 　\t]+/, "").replace(/[ 　\t]+$/, "");
 }
 
+function extractQuestionAnswerText(text: string) {
+  const m = text.match(
+    /■質問の回答\s*\n([\s\S]*?)(?=\n【|\n■|\n□■|\n-{5,}|$)/
+  );
+
+  const block = normalizeMultilineValue(m?.[1] ?? "");
+  if (!block) return "";
+
+  const answer = block.match(/A[\.．：:]\s*([^\n]+)/);
+  if (answer?.[1]) return answer[1].trim();
+
+  return block;
+}
+
+
 export function parseHotpepperReservationMail(text: string) {
   const normalized = text.replace(/\r\n/g, "\n");
 
@@ -67,10 +82,7 @@ export function parseHotpepperReservationMail(text: string) {
     getBlock("ご要望") ||
     "";
 
-const questionAnswerText =
-  getBlock("質問の回答") ||
-  getBlock("質問回答") ||
-  "";
+const questionAnswerText = extractQuestionAnswerText(normalized);
 
 
   return {
