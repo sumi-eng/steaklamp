@@ -247,15 +247,6 @@ setCalendarMeta(map);
     setIsCalendarOpen(false);
   }
 
-  return (
-    <main className="min-h-screen bg-stone-50 p-4 md:p-6">
-      <div className="mx-auto max-w-[1400px]">
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-  <div>
-    <h1 className="text-2xl font-bold text-stone-900">予約管理</h1>
-    <p className="mt-1 text-sm text-stone-600">steaklamp</p>
-  </div>
-
 async function loadClosures() {
   const res = await fetch("/api/steaklamp/closures");
   const data = await res.json();
@@ -300,6 +291,18 @@ function openClosureModal() {
   loadClosures();
 }
 
+
+
+
+
+  return (
+    <main className="min-h-screen bg-stone-50 p-4 md:p-6">
+      <div className="mx-auto max-w-[1400px]">
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+  <div>
+    <h1 className="text-2xl font-bold text-stone-900">予約管理</h1>
+    <p className="mt-1 text-sm text-stone-600">steaklamp</p>
+  </div>
 
 
   <div className="flex gap-2">
