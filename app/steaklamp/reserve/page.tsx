@@ -338,7 +338,9 @@ const [closureMap, setClosureMap] = useState<Record<string, string>>({});
     return () => {
       cancelled = true;
     };
-  }, [date, persons, counterOk]);
+
+
+ [date, persons, counterOk]);
 
   function getCalendarStatus(
     ymd: string
