@@ -176,16 +176,31 @@ const [coursePrice, setCoursePrice] = useState<number | null>(null);
 
               <div>
                 <label className="mb-2 block text-sm font-bold text-stone-800">開始時刻</label>
-                <input
-                  type="time"
-                  step={900}
-                  value={startAt.slice(11, 16)}
-                  onChange={(e) => {
-                    const datePart = startAt.slice(0, 10);
-                    setStartAt(`${datePart}T${e.target.value}`);
-                  }}
-                  className="w-full rounded-2xl border border-stone-300 px-4 py-3 outline-none focus:border-stone-500"
-                />
+               <select
+  value={startAt.slice(11, 16)}
+  onChange={(e) => {
+    const datePart = startAt.slice(0, 10);
+    setStartAt(`${datePart}T${e.target.value}`);
+  }}
+  className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none focus:border-stone-500"
+>
+  {[
+    "18:00",
+    "18:15",
+    "18:30",
+    "18:45",
+    "19:00",
+    "19:15",
+    "19:30",
+    "19:45",
+    "20:00",
+  ].map((t) => (
+    <option key={t} value={t}>
+      {t}
+    </option>
+  ))}
+</select>
+
               </div>
 
               <div>
