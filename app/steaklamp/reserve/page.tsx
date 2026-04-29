@@ -290,57 +290,54 @@ const [closureMap, setClosureMap] = useState<Record<string, string>>({});
 }, []);
 
 
-    async function fetchTimes() {
-      if (!date) return;
+   async function fetchTimes() {
+  if (!date) return;
 
-      setTimeLoading(true);
+  setTimeLoading(true);
 
-      try {
-        const checks = await Promise.all(
-          allTimes.map(async (t) => {
-            const res = await fetch("/api/steaklamp/seats/search", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                persons,
-                startAt: `${date}T${t}:00+09:00`,
-                duration,
-                counterOk,
-              }),
-            });
+  try {
+    const checks = await Promise.all(
+      allTimes.map(async (t) => {
+        const res = await fetch("/api/steaklamp/seats/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            persons,
+            startAt: `${date}T${t}:00+09:00`,
+            duration,
+            counterOk,
+          }),
+        });
 
-            const json = await res.json().catch(() => ({}));
-            const seats = json.ok ? (json.seats as SeatCandidate[]) ?? [] : [];
-            return seats.length > 0 ? t : null;
-          })
-        );
+        const json = await res.json().catch(() => ({}));
+        const seats = json.ok ? ((json.seats as SeatCandidate[]) ?? []) : [];
 
-        const available = checks.filter(Boolean) as string[];
+        return seats.length > 0 ? t : null;
+      })
+    );
 
-        if (!cancelled) {
-  setTimeOptions(available);
+    const available = checks.filter(Boolean) as string[];
 
-  // 重要：
-  // 人数変更などで選択中の時間が満席になっても、
-  // 勝手に別の時間へ変更しない。
-  // 予約確定時にエラーを出す。
-}
-
-      } catch {
-        if (!cancelled) setTimeOptions([]);
-      } finally {
-        if (!cancelled) setTimeLoading(false);
-      }
+    if (!cancelled) {
+      setTimeOptions(available);
     }
+  } catch {
+    if (!cancelled) {
+      setTimeOptions([]);
+    }
+  } finally {
+    if (!cancelled) {
+      setTimeLoading(false);
+    }
+  }
 }
 
+fetchTimes();
 
+return () => {
+  cancelled = true;
+};
 
-    fetchTimes();
-
-    return () => {
-      cancelled = true;
-    };
 
 
  [date, persons, counterOk]);
