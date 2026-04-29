@@ -129,11 +129,59 @@ export default function ReservationLedger() {
   const [calendarMonth, setCalendarMonth] = useState(() => parseDateKey(dateKey));
   const [calendarMeta, setCalendarMeta] = useState<Record<string, CalendarDayMeta>>({});
 
+const [dayClosure, setDayClosure] = useState<{
+  closed_on: string;
+  reason: string | null;
+} | null>(null);
+
+useEffect(() => {
+  let alive = true;
+
+  async function loadDayClosure() {
+    try {
+      const res = await fetch("/api/steaklamp/closures", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+
+      if (!alive) return;
+
+      if (data.ok) {
+        const found = (data.items ?? []).find(
+          (c: any) => c.closed_on === dateKey
+        );
+
+        setDayClosure(
+          found
+            ? {
+                closed_on: found.closed_on,
+                reason: found.reason ?? null,
+              }
+            : null
+        );
+      } else {
+        setDayClosure(null);
+      }
+    } catch {
+      if (alive) setDayClosure(null);
+    }
+  }
+
+  loadDayClosure();
+
+  return () => {
+    alive = false;
+  };
+}, [dateKey, reloadTick]);
+
+
+
 const [isClosureOpen, setIsClosureOpen] = useState(false);
 const [closures, setClosures] = useState<any[]>([]);
 const [closureDate, setClosureDate] = useState(dateKey);
 const [closureReason, setClosureReason] = useState("臨時休業");
 const [closureLoading, setClosureLoading] = useState(false);
+
 
 
   const timeSlots = useMemo(() => buildTimeSlots(18, 22, 15), []);
@@ -381,6 +429,16 @@ function openClosureModal() {
 </button>
 
           {loading && <div className="ml-2 text-sm text-stone-500">読み込み中...</div>}
+
+{dayClosure && (
+  <div className="w-full rounded-2xl border border-emerald-300 bg-emerald-50 px-5 py-4 text-emerald-800">
+    <div className="text-lg font-bold">本日は休業日です</div>
+    <div className="mt-1 text-sm font-semibold">
+      {dayClosure.reason || "臨時休業"}
+    </div>
+  </div>
+)}
+
 
           {isCalendarOpen && (
             <div className="absolute left-0 top-16 z-40 w-[560px] max-w-[calc(100vw-2rem)] rounded-3xl border border-stone-200 bg-white p-5 shadow-2xl">
