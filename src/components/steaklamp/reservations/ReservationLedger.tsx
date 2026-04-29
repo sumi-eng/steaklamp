@@ -649,6 +649,15 @@ function openClosureModal() {
   {reservation.title}
 </div>
 
+{reservation.courseNameSnapshot ? (
+  <div className="mt-1 text-[12px] font-bold leading-tight text-rose-700">
+    コース：{reservation.courseNameSnapshot}
+    {reservation.coursePriceSnapshot
+      ? `（${Number(reservation.coursePriceSnapshot).toLocaleString()}円）`
+      : ""}
+  </div>
+) : null}
+
 {reservation.notes ? (
   <div className="mt-2 whitespace-pre-wrap break-words rounded-xl bg-white/70 px-2 py-1 text-[13px] font-semibold leading-snug text-rose-700">
     備考：{reservation.notes}
