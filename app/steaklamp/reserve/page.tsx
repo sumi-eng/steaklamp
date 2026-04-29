@@ -289,58 +289,60 @@ const [closureMap, setClosureMap] = useState<Record<string, string>>({});
   };
 }, []);
 
+useEffect(() => {
+  let cancelled = false;
 
-   async function fetchTimes() {
-  if (!date) return;
+  async function fetchTimes() {
+    if (!date) return;
 
-  setTimeLoading(true);
+    setTimeLoading(true);
 
-  try {
-    const checks = await Promise.all(
-      allTimes.map(async (t) => {
-        const res = await fetch("/api/steaklamp/seats/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            persons,
-            startAt: `${date}T${t}:00+09:00`,
-            duration,
-            counterOk,
-          }),
-        });
+    try {
+      const checks = await Promise.all(
+        allTimes.map(async (t) => {
+          const res = await fetch("/api/steaklamp/seats/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              persons,
+              startAt: `${date}T${t}:00+09:00`,
+              duration,
+              counterOk,
+            }),
+          });
 
-        const json = await res.json().catch(() => ({}));
-        const seats = json.ok ? ((json.seats as SeatCandidate[]) ?? []) : [];
+          const json = await res.json().catch(() => ({}));
+          const seats = json.ok ? ((json.seats as SeatCandidate[]) ?? []) : [];
 
-        return seats.length > 0 ? t : null;
-      })
-    );
+          return seats.length > 0 ? t : null;
+        })
+      );
 
-    const available = checks.filter(Boolean) as string[];
+      const available = checks.filter(Boolean) as string[];
 
-    if (!cancelled) {
-      setTimeOptions(available);
-    }
-  } catch {
-    if (!cancelled) {
-      setTimeOptions([]);
-    }
-  } finally {
-    if (!cancelled) {
-      setTimeLoading(false);
+      if (!cancelled) {
+        setTimeOptions(available);
+      }
+    } catch {
+      if (!cancelled) {
+        setTimeOptions([]);
+      }
+    } finally {
+      if (!cancelled) {
+        setTimeLoading(false);
+      }
     }
   }
-}
 
-fetchTimes();
+  fetchTimes();
 
-return () => {
-  cancelled = true;
-};
+  return () => {
+    cancelled = true;
+  };
+}, [date, persons, counterOk, allTimes]);
 
+  
 
-
- [date, persons, counterOk]);
 
   function getCalendarStatus(
     ymd: string
