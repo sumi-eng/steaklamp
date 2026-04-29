@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
+import { sendLineReservationNotice } from "@/steaklamp/lib/lineNotify";
+
 
 export const runtime = "nodejs";
 
@@ -70,6 +72,29 @@ export async function POST(req: Request) {
         500
       );
     }
+
+const { data: seat } = await supabaseAdmin
+  .from("seats")
+  .select("id, name")
+  .eq("id", updated.seat_id)
+  .maybeSingle();
+
+try {
+  await sendLineReservationNotice({
+    name: updated.name,
+    phone: updated.phone,
+    email: updated.email,
+    persons: updated.persons,
+    start_at: updated.start_at,
+    seatName: seat?.name ?? null,
+    courseName: updated.course_name_snapshot,
+    notes: updated.notes,
+    source: "キャンセル",
+  });
+} catch (lineError) {
+  console.error("line cancel notify failed", lineError);
+}
+
 
     return json({
       ok: true,

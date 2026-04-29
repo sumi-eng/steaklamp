@@ -40,21 +40,26 @@ export async function sendLineReservationNotice(
     return;
   }
 
-  const text = [
-    "【Lamp】新しい予約が入りました",
-    "",
-    `日時：${formatJpDateTime(reservation.start_at)}`,
-    `名前：${reservation.name ?? "未設定"} 様`,
-    `人数：${reservation.persons ?? "-"}名`,
-    `席：${reservation.seatName ?? "-"}`,
-    `コース：${reservation.courseName ?? "席のみ"}`,
-    `電話：${reservation.phone ?? "-"}`,
-    reservation.email ? `メール：${reservation.email}` : null,
-    reservation.notes ? `備考：${reservation.notes}` : null,
-    reservation.source ? `経路：${reservation.source}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
+ const isCancel = reservation.source === "キャンセル";
+
+const text = [
+  isCancel
+    ? "【Lamp】予約がキャンセルされました"
+    : "【Lamp】新しい予約が入りました",
+  "",
+  `日時：${formatJpDateTime(reservation.start_at)}`,
+  `名前：${reservation.name ?? "未設定"} 様`,
+  `人数：${reservation.persons ?? "-"}名`,
+  `席：${reservation.seatName ?? "-"}`,
+  `コース：${reservation.courseName ?? "席のみ"}`,
+  `電話：${reservation.phone ?? "-"}`,
+  reservation.email ? `メール：${reservation.email}` : null,
+  reservation.notes ? `備考：${reservation.notes}` : null,
+  reservation.source && !isCancel ? `経路：${reservation.source}` : null,
+]
+  .filter(Boolean)
+  .join("\n");
+
 
   const res = await fetch("https://api.line.me/v2/bot/message/push", {
     method: "POST",
