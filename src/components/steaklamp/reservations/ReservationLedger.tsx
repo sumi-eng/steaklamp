@@ -269,8 +269,11 @@ async function addClosure() {
     return;
   }
 
-  await loadClosures();
-  setReloadTick((v) => v + 1);
+ await loadClosures();
+setReloadTick((v) => v + 1);
+setIsClosureOpen(false);
+alert("休業日を登録しました");
+
 }
 
 async function deleteClosure(id: string) {
