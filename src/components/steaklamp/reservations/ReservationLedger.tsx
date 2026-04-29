@@ -519,6 +519,17 @@ function openClosureModal() {
                 height: `${rows.length * rowHeight}px`,
               }}
             >
+{dayClosure && (
+  <div className="absolute inset-0 z-30 flex items-center justify-center rounded-none border-2 border-red-300 bg-red-100/80 text-red-800">
+    <div className="rounded-3xl bg-white/90 px-8 py-6 text-center shadow">
+      <div className="text-3xl font-black">休業日</div>
+      <div className="mt-2 text-lg font-bold">
+        {dayClosure.reason || "臨時休業"}
+      </div>
+    </div>
+  </div>
+)}
+
               {rows.map((row, rowIndex) => (
                 <div
                   key={row.id}
