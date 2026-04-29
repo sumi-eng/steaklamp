@@ -129,6 +129,13 @@ export default function ReservationLedger() {
   const [calendarMonth, setCalendarMonth] = useState(() => parseDateKey(dateKey));
   const [calendarMeta, setCalendarMeta] = useState<Record<string, CalendarDayMeta>>({});
 
+const [isClosureOpen, setIsClosureOpen] = useState(false);
+const [closures, setClosures] = useState<any[]>([]);
+const [closureDate, setClosureDate] = useState(dateKey);
+const [closureReason, setClosureReason] = useState("臨時休業");
+const [closureLoading, setClosureLoading] = useState(false);
+
+
   const timeSlots = useMemo(() => buildTimeSlots(18, 22, 15), []);
   const totalSlots = timeSlots.length;
   const rowHeight = 68;
@@ -249,6 +256,52 @@ setCalendarMeta(map);
     <p className="mt-1 text-sm text-stone-600">steaklamp</p>
   </div>
 
+async function loadClosures() {
+  const res = await fetch("/api/steaklamp/closures");
+  const data = await res.json();
+  if (data.ok) setClosures(data.items ?? []);
+}
+
+async function addClosure() {
+  const res = await fetch("/api/steaklamp/closures", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      closed_on: closureDate,
+      reason: closureReason,
+    }),
+  });
+
+  const data = await res.json();
+  if (!data.ok) {
+    alert("保存失敗");
+    return;
+  }
+
+  await loadClosures();
+  setReloadTick((v) => v + 1);
+}
+
+async function deleteClosure(id: string) {
+  if (!confirm("削除しますか？")) return;
+
+  await fetch(`/api/steaklamp/closures/${id}`, {
+    method: "DELETE",
+  });
+
+  await loadClosures();
+  setReloadTick((v) => v + 1);
+}
+
+function openClosureModal() {
+  setClosureDate(dateKey);
+  setClosureReason("臨時休業");
+  setIsClosureOpen(true);
+  loadClosures();
+}
+
+
+
   <div className="flex gap-2">
     {/* リスト表示ボタン */}
     <a
@@ -288,6 +341,14 @@ setCalendarMeta(map);
 >
   予約一覧
 </a>
+
+<button
+  type="button"
+  onClick={openClosureModal}
+  className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold"
+>
+  休業日設定
+</button>
 
 <button
   type="button"
@@ -520,6 +581,51 @@ setCalendarMeta(map);
             </div>
           </div>
         </div>
+
+{isClosureOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="w-full max-w-md rounded-3xl bg-white p-5">
+      <h2 className="text-lg font-bold mb-3">休業日設定</h2>
+
+      <input
+        type="date"
+        value={closureDate}
+        onChange={(e) => setClosureDate(e.target.value)}
+        className="w-full border p-2 mb-2"
+      />
+
+      <input
+        value={closureReason}
+        onChange={(e) => setClosureReason(e.target.value)}
+        className="w-full border p-2 mb-3"
+      />
+
+      <button
+        onClick={addClosure}
+        className="w-full bg-emerald-600 text-white p-2 rounded mb-3"
+      >
+        登録
+      </button>
+
+      <div className="max-h-40 overflow-auto space-y-2">
+        {closures.map((c) => (
+          <div key={c.id} className="flex justify-between text-sm">
+            <span>{c.closed_on}</span>
+            <button onClick={() => deleteClosure(c.id)}>削除</button>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={() => setIsClosureOpen(false)}
+        className="mt-3 w-full border p-2"
+      >
+        閉じる
+      </button>
+    </div>
+  </div>
+)}
+
 
         {isCreateOpen && (
           <ReservationCreateModal
