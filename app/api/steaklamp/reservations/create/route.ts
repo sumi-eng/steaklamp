@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
+import { sendLineReservationNotice } from "@/steaklamp/lib/lineNotify";
+
 
 export const runtime = "nodejs";
 
@@ -422,6 +424,23 @@ if (closure) {
     } catch (mailError) {
       console.error("reservation email failed", mailError);
     }
+
+try {
+  await sendLineReservationNotice({
+    name: inserted.name,
+    phone: inserted.phone,
+    email: inserted.email,
+    persons: inserted.persons,
+    start_at: inserted.start_at,
+    seatName: seat.name,
+    courseName: inserted.course_name_snapshot,
+    notes: inserted.notes,
+    source: inserted.source ?? "web",
+  });
+} catch (lineError) {
+  console.error("line notify failed", lineError);
+}
+
 
     return json({
       ok: true,
