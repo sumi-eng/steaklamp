@@ -332,6 +332,9 @@ const [closureMap, setClosureMap] = useState<Record<string, string>>({});
         if (!cancelled) setTimeLoading(false);
       }
     }
+}
+
+
 
     fetchTimes();
 
