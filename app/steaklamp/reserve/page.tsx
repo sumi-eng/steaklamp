@@ -160,6 +160,9 @@ export default function SteaklampReservePage() {
   } | null>(null);
 
   const [calendarMap, setCalendarMap] = useState<Record<string, CalendarDayInfo>>({});
+const [closureMap, setClosureMap] = useState<Record<string, string>>({});
+
+
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [timeOptions, setTimeOptions] = useState<string[]>([]);
   const [timeLoading, setTimeLoading] = useState(false);
@@ -254,7 +257,38 @@ export default function SteaklampReservePage() {
   }, [visibleMonth, persons, counterOk]);
 
   useEffect(() => {
-    let cancelled = false;
+  let cancelled = false;
+
+  async function fetchClosures() {
+    try {
+      const res = await fetch("/api/steaklamp/closures", {
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => ({}));
+
+      if (cancelled) return;
+
+      if (json.ok) {
+        const next: Record<string, string> = {};
+        for (const c of json.items ?? []) {
+          next[String(c.closed_on)] = String(c.reason ?? "臨時休業");
+        }
+        setClosureMap(next);
+      } else {
+        setClosureMap({});
+      }
+    } catch {
+      if (!cancelled) setClosureMap({});
+    }
+  }
+
+  fetchClosures();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
 
     async function fetchTimes() {
       if (!date) return;
@@ -532,14 +566,22 @@ if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してく�
                 <div className="grid grid-cols-7 gap-2">
                   {calendarDays.map((cell) => {
                     const status = getCalendarStatus(cell.ymd);
-                    const disabled = status === "closed" || status === "full";
-                    const selected = status === "selected";
+const isSpecialClosed = Boolean(closureMap[cell.ymd]);
+const disabled = isSpecialClosed || status === "closed" || status === "full";
+const selected = !isSpecialClosed && status === "selected";
+
 
                     let mark = "×";
-                    if (status === "available" || status === "selected") mark = "◯";
-                    if (status === "few") mark = "△";
-                    if (status === "full") mark = "×";
-                    if (status === "closed") mark = "ー";
+
+if (isSpecialClosed) {
+  mark = "×";
+} else {
+  if (status === "available" || status === "selected") mark = "◯";
+  if (status === "few") mark = "△";
+  if (status === "full") mark = "×";
+  if (status === "closed") mark = "ー";
+}
+
 
                     return (
                       <button
@@ -585,13 +627,16 @@ if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してく�
                             "mt-1 text-[22px] font-bold leading-none sm:text-xl",
                             selected
                               ? "text-white"
-                              : status === "available"
-                              ? "text-emerald-600"
-                              : status === "few"
-                              ? "text-amber-600"
-                              : status === "full"
-                              ? "text-red-500"
-                              : "text-stone-400",
+                             : isSpecialClosed
+? "text-red-500"
+: status === "available"
+? "text-emerald-600"
+: status === "few"
+? "text-amber-600"
+: status === "full"
+? "text-red-500"
+: "text-stone-400",
+
                           ].join(" ")}
                         >
                           {mark}
