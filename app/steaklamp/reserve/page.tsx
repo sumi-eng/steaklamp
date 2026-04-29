@@ -578,7 +578,7 @@ const selected = !isSpecialClosed && status === "selected";
                     let mark = "×";
 
 if (isSpecialClosed) {
-  mark = "×";
+  mark = "ー";
 } else {
   if (status === "available" || status === "selected") mark = "◯";
   if (status === "few") mark = "△";
