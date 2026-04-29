@@ -261,6 +261,44 @@ if (startAt < now) {
       );
     }
 
+// ===== 休業日チェック =====
+const dateKey = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(startAt);
+
+const { data: closure, error: closureError } = await supabaseAdmin
+  .from("store_closures")
+  .select("id, reason")
+  .eq("store_id", store.id)
+  .eq("closed_on", dateKey)
+  .maybeSingle();
+
+if (closureError) {
+  return json(
+    {
+      ok: false,
+      error: "closure_load_failed",
+      detail: closureError.message,
+    },
+    500
+  );
+}
+
+if (closure) {
+  return json(
+    {
+      ok: false,
+      error: "この日は休業日のため予約できません",
+      reason: closure.reason,
+    },
+    400
+  );
+}
+
+
     const { data: seat, error: seatError } = await supabaseAdmin
       .from("seats")
       .select("id, name")

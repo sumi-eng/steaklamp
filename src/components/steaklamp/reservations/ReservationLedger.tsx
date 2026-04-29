@@ -726,6 +726,9 @@ function openClosureModal() {
               durationMinutes: selectedReservation.durationMinutes,
               notes: selectedReservation.notes,
               seatName: selectedReservation.seatName,
+courseNameSnapshot: (selectedReservation as any).courseNameSnapshot ?? null,
+coursePriceSnapshot: (selectedReservation as any).coursePriceSnapshot ?? null,
+
             }}
             onClose={() => setSelectedReservation(null)}
             onUpdated={() => setReloadTick((v) => v + 1)}

@@ -21,6 +21,9 @@ type ReservationDetail = {
   durationMinutes: number;
   notes?: string | null;
   seatName: string;
+
+  courseNameSnapshot?: string | null;
+  coursePriceSnapshot?: number | null;
 };
 
 function toLocalDatetimeInputValue(value: string) {
@@ -57,6 +60,15 @@ export default function ReservationDetailModal({
   );
   const [notes, setNotes] = useState(reservation.notes ?? "");
   const [seatId, setSeatId] = useState(reservation.seatId);
+
+const [courseName, setCourseName] = useState(
+  reservation.courseNameSnapshot ?? "席のみ"
+);
+
+const [coursePrice, setCoursePrice] = useState<number | null>(
+  reservation.coursePriceSnapshot ?? null
+);
+
 
   const [candidates, setCandidates] = useState<SeatCandidate[]>([]);
   const [loadingSeats, setLoadingSeats] = useState(false);
@@ -120,6 +132,9 @@ export default function ReservationDetailModal({
           startAt: `${startAt}:00+09:00`,
           durationMinutes,
           notes,
+course_name_snapshot: courseName,
+course_price_snapshot: coursePrice,
+
         }),
       });
 
@@ -245,6 +260,29 @@ export default function ReservationDetailModal({
                   className="w-full rounded-2xl border border-stone-300 px-4 py-3"
                 />
               </label>
+
+<label>
+  <div className="mb-1 text-sm font-bold text-stone-700">コース</div>
+  <select
+    value={courseName}
+    onChange={(e) => {
+      const value = e.target.value;
+      setCourseName(value);
+
+      if (value === "Aコース") setCoursePrice(6600);
+      else if (value === "Bコース") setCoursePrice(8800);
+      else if (value === "Cコース") setCoursePrice(11000);
+      else setCoursePrice(null);
+    }}
+    className="w-full rounded-2xl border border-stone-300 px-4 py-3"
+  >
+    <option value="席のみ">席のみ</option>
+    <option value="Aコース">Aコース 6,600円</option>
+    <option value="Bコース">Bコース 8,800円</option>
+    <option value="Cコース">Cコース 11,000円</option>
+  </select>
+</label>
+
             </div>
 
             <div className="mt-4">

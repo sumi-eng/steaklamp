@@ -37,6 +37,10 @@ export default function ReservationCreateModal({
   const [notes, setNotes] = useState("");
   const [counterOk, setCounterOk] = useState(false);
 
+const [courseName, setCourseName] = useState("席のみ");
+const [coursePrice, setCoursePrice] = useState<number | null>(null);
+
+
   const [candidates, setCandidates] = useState<CandidateSeat[]>([]);
   const [selectedSeatId, setSelectedSeatId] = useState("");
   const [loadingSeats, setLoadingSeats] = useState(false);
@@ -104,17 +108,20 @@ export default function ReservationCreateModal({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          name,
-          phone,
-          email,
-          persons,
-          startAt,
-          duration,
-          notes,
-          counterOk,
-          seatId: selectedSeatId,
-        }),
+       body: JSON.stringify({
+  name,
+  phone,
+  email,
+  persons,
+  startAt,
+  duration,
+  notes,
+  counterOk,
+  seatId: selectedSeatId,
+  course_name_snapshot: courseName,
+  course_price_snapshot: coursePrice,
+}),
+
       });
 
       const data = await res.json();
@@ -241,6 +248,29 @@ onClick={() => {
                   <option value="180">180分</option>
                 </select>
               </div>
+
+<div>
+  <label className="mb-2 block text-sm font-bold text-stone-800">コース</label>
+  <select
+    value={courseName}
+    onChange={(e) => {
+      const value = e.target.value;
+      setCourseName(value);
+
+      if (value === "Aコース") setCoursePrice(6600);
+      else if (value === "Bコース") setCoursePrice(8800);
+      else if (value === "Cコース") setCoursePrice(11000);
+      else setCoursePrice(null);
+    }}
+    className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none focus:border-stone-500"
+  >
+    <option value="席のみ">席のみ</option>
+    <option value="Aコース">Aコース 6,600円</option>
+    <option value="Bコース">Bコース 8,800円</option>
+    <option value="Cコース">Cコース 11,000円</option>
+  </select>
+</div>
+
 
               <div>
                 <label className="mb-2 block text-sm font-bold text-stone-800">人数</label>

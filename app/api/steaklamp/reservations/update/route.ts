@@ -11,6 +11,18 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
+const courseNameSnapshot = body.course_name_snapshot
+  ? String(body.course_name_snapshot).trim()
+  : null;
+
+const coursePriceSnapshot =
+  body.course_price_snapshot === null ||
+  body.course_price_snapshot === undefined ||
+  body.course_price_snapshot === ""
+    ? null
+    : Number(body.course_price_snapshot);
+
+
     const id = String(body.id ?? "").trim();
     const name = String(body.name ?? "").trim();
     const phone = body.phone ? String(body.phone).trim() : null;
@@ -45,6 +57,9 @@ seat_id: seatId,
         start_at: startAt.toISOString(),
         duration_minutes: durationMinutes,
         notes,
+course_name_snapshot: courseNameSnapshot,
+course_price_snapshot: coursePriceSnapshot,
+
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
