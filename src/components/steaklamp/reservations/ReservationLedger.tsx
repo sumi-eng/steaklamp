@@ -87,6 +87,11 @@ type DayReservation = {
   status: string;
   notes?: string | null;
   rowIds: string[];
+courseNameSnapshot?: string | null;
+coursePriceSnapshot?: number | null;
+course_name_snapshot?: string | null;
+course_price_snapshot?: number | null;
+
 };
 
 type DayReservationsResponse = {

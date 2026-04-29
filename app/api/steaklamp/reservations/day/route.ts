@@ -170,6 +170,11 @@ seatId: String(r.seat_id ?? ""),
   seatName: seat?.name ?? "",
   status: String(r.status ?? "booked"),
   notes: r.notes ?? null,
+courseNameSnapshot: r.course_name_snapshot ?? null,
+coursePriceSnapshot: r.course_price_snapshot ?? null,
+course_name_snapshot: r.course_name_snapshot ?? null,
+course_price_snapshot: r.course_price_snapshot ?? null,
+
   rowIds,
 };
 
