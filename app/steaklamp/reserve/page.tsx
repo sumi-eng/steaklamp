@@ -24,7 +24,7 @@ type SeatCandidate = {
   physicalSeats: string;
 };
 
-const SHOP_PHONE = "088-655-8623"; // 必要ならsteaklampの番号に変更
+const SHOP_PHONE = "088-661-1536"; // 必要ならsteaklampの番号に変更
 const SHOP_TEL_LINK = `tel:${SHOP_PHONE.replace(/-/g, "")}`;
 
 const PLANS: Record<

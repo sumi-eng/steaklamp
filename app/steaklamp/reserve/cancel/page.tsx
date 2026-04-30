@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-const SHOP_PHONE = "088-655-8623";
+const SHOP_PHONE = "088-661-1536";
 
 function ReserveCancelPageInner() {
   const searchParams = useSearchParams();
