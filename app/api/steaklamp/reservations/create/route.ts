@@ -117,13 +117,15 @@ async function sendReservationEmails({
   process.env.RESEND_FROM ??
   "Passion for Grilling Lamp <onboarding@resend.dev>";
 
+ const storeEmail = process.env.STEAKLAMP_STORE_EMAIL ?? "lamp@japanblue.net";
+
 console.log("STEAK MAIL FROM =", from);
 console.log("STEAK MAIL STORE TO =", storeEmail);
 console.log("STEAK MAIL CUSTOMER TO =", reservation.email);
 
 
 
-  const storeEmail = process.env.STEAKLAMP_STORE_EMAIL ?? "lamp@japanblue.net";
+ 
 
   const dateText = formatDateTimeJp(reservation.start_at);
 
