@@ -112,8 +112,16 @@ async function sendReservationEmails({
   const cancelUrl = `${siteUrl}/steaklamp/reserve/cancel?token=${cancelToken}`;
 
   const from =
-    process.env.STEAKLAMP_FROM_EMAIL ??
-    "Passion for Grilling Lamp <lamp@japanblue.net>";
+  process.env.STEAKLAMP_FROM_EMAIL ??
+  process.env.RESEND_FROM_EMAIL ??
+  process.env.RESEND_FROM ??
+  "Passion for Grilling Lamp <onboarding@resend.dev>";
+
+console.log("STEAK MAIL FROM =", from);
+console.log("STEAK MAIL STORE TO =", storeEmail);
+console.log("STEAK MAIL CUSTOMER TO =", reservation.email);
+
+
 
   const storeEmail = process.env.STEAKLAMP_STORE_EMAIL ?? "lamp@japanblue.net";
 
