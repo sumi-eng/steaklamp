@@ -279,14 +279,18 @@ export async function importHotpepperReservationFromText(args: {
     };
   }
 
-  if (parsed.mailType !== "new") {
-    return {
-      ok: true as const,
-      skipped: true,
-      reason: "unsupported_mail_type",
-      parsed,
-    };
-  }
+ const importableMailTypes = ["new", "request", "change", "modify", "updated", "unknown"];
+
+if (!importableMailTypes.includes(String(parsed.mailType))) {
+  return {
+    ok: true as const,
+    skipped: true,
+    reason: "unsupported_mail_type",
+    mailType: parsed.mailType,
+    parsed,
+  };
+}
+
 
   const persons = Number(parsed.persons ?? 0);
   if (!Number.isFinite(persons) || persons <= 0) {
