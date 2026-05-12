@@ -134,15 +134,16 @@ export default function ReservationLedger() {
   const [calendarMonth, setCalendarMonth] = useState(() => parseDateKey(dateKey));
   const [calendarMeta, setCalendarMeta] = useState<Record<string, CalendarDayMeta>>({});
 
-const [dayClosure, setDayClosure] = useState<{
-  closed_on: string;
-  reason: string | null;
-} | null>(null);
+const [isClosureOpen, setIsClosureOpen] = useState(false);
+const [closures, setClosures] = useState<any[]>([]);
+const [closureDate, setClosureDate] = useState(dateKey);
+const [closureReason, setClosureReason] = useState("臨時休業");
+const [closureLoading, setClosureLoading] = useState(false);
 
 useEffect(() => {
   let alive = true;
 
-  async function loadDayClosure() {
+  async function loadInitialClosures() {
     try {
       const res = await fetch("/api/steaklamp/closures", {
         cache: "no-store",
@@ -152,40 +153,34 @@ useEffect(() => {
       if (!alive) return;
 
       if (data.ok) {
-        const found = (data.items ?? []).find(
-          (c: any) => c.closed_on === dateKey
-        );
-
-        setDayClosure(
-          found
-            ? {
-                closed_on: found.closed_on,
-                reason: found.reason ?? null,
-              }
-            : null
-        );
+        setClosures(data.items ?? []);
       } else {
-        setDayClosure(null);
+        setClosures([]);
       }
     } catch {
-      if (alive) setDayClosure(null);
+      if (alive) setClosures([]);
     }
   }
 
-  loadDayClosure();
+  loadInitialClosures();
 
   return () => {
     alive = false;
   };
-}, [dateKey, reloadTick]);
+}, [reloadTick]);
 
 
+const dayClosure = useMemo(() => {
+  const found = closures.find((c: any) => c.closed_on === dateKey);
 
-const [isClosureOpen, setIsClosureOpen] = useState(false);
-const [closures, setClosures] = useState<any[]>([]);
-const [closureDate, setClosureDate] = useState(dateKey);
-const [closureReason, setClosureReason] = useState("臨時休業");
-const [closureLoading, setClosureLoading] = useState(false);
+  return found
+    ? {
+        closed_on: found.closed_on,
+        reason: found.reason ?? null,
+      }
+    : null;
+}, [closures, dateKey]);
+
 
 
 
