@@ -4,17 +4,25 @@ import { useEffect, useState } from "react";
 import ReservationDetailModal from "./ReservationDetailModal";
 
 function formatDateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function parseDateKey(dateKey: string) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
 }
 
 function addDays(dateKey: string, days: number) {
-  const d = new Date(dateKey);
+  const d = parseDateKey(dateKey);
   d.setDate(d.getDate() + days);
   return formatDateKey(d);
 }
 
 function formatJP(dateKey: string) {
-  const d = new Date(dateKey);
+  const d = parseDateKey(dateKey);
   const w = ["日", "月", "火", "水", "木", "金", "土"];
   return `${d.getMonth() + 1}/${d.getDate()}（${w[d.getDay()]}）`;
 }
@@ -64,7 +72,9 @@ export default function ReservationListView() {
   const [selected, setSelected] = useState<Reservation | null>(null);
 
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+  const [calendarMonth, setCalendarMonth] = useState(() =>
+    parseDateKey(formatDateKey(new Date()))
+  );
   const [calendarMeta, setCalendarMeta] = useState<Record<string, any>>({});
 
   useEffect(() => {
@@ -254,7 +264,7 @@ export default function ReservationListView() {
             <button
               type="button"
               onClick={() => {
-                setCalendarMonth(new Date(dateKey));
+                setCalendarMonth(parseDateKey(dateKey));
                 setIsCalendarOpen(true);
               }}
               className="w-full rounded-xl bg-white px-3 py-2 font-semibold text-stone-900"
