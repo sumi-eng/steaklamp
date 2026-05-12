@@ -107,7 +107,39 @@ function openDatePicker() {
   }
 
   return (
-    <main className="min-h-screen bg-stone-50 p-4">
+     <main className="min-h-screen bg-stone-50 p-4 text-stone-900 [color-scheme:light]">
+    <style jsx global>{`
+      input,
+      select,
+      textarea,
+      button {
+        color-scheme: light;
+      }
+
+      input,
+      select,
+      textarea {
+        color: #1c1917 !important;
+        background-color: #ffffff !important;
+        -webkit-text-fill-color: #1c1917 !important;
+      }
+
+      input::placeholder,
+      textarea::placeholder {
+        color: #78716c !important;
+        opacity: 1 !important;
+      }
+
+      input:disabled,
+      select:disabled,
+      textarea:disabled {
+        color: #44403c !important;
+        background-color: #fafaf9 !important;
+        -webkit-text-fill-color: #44403c !important;
+        opacity: 1 !important;
+      }
+    `}</style>
+
       <div className="mx-auto max-w-[600px]">
 
         {/* ヘッダー */}
@@ -139,7 +171,8 @@ function openDatePicker() {
         <div className="flex gap-2 mb-4">
           <button
             onClick={() => setDateKey(addDays(dateKey, -1))}
-            className="px-3 py-2 border rounded-xl"
+            className="rounded-xl border bg-white px-3 py-2 text-stone-800"
+
           >
             ←
           </button>
@@ -166,7 +199,8 @@ function openDatePicker() {
 
           <button
             onClick={() => setDateKey(addDays(dateKey, 1))}
-            className="px-3 py-2 border rounded-xl"
+            className="rounded-xl border bg-white px-3 py-2 text-stone-800"
+
           >
             →
           </button>
