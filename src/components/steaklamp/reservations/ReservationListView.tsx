@@ -402,6 +402,11 @@ export default function ReservationListView() {
               <div className="mt-1 text-sm text-gray-600">
                 {r.persons}名 / {r.seatName}
               </div>
+{r.notes ? (
+  <div className="mt-3 whitespace-pre-wrap rounded-xl bg-stone-50 px-3 py-2 text-sm font-semibold leading-relaxed text-stone-700">
+    備考：{r.notes}
+  </div>
+) : null}
 
               <div className="mt-2">
                 <span className="rounded bg-green-600 px-2 py-1 text-xs text-white">
