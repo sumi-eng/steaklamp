@@ -57,3 +57,12 @@ button:disabled {
   -webkit-text-fill-color: #57534e !important;
   opacity: 1 !important;
 }
+@media (prefers-color-scheme: dark) {
+  button {
+    -webkit-text-fill-color: currentColor;
+  }
+
+  button:not(:disabled) {
+    opacity: 1 !important;
+  }
+}
