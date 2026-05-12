@@ -399,6 +399,38 @@ export default function SteaklampReservePage() {
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900 [color-scheme:light]">
+<style jsx global>{`
+  input,
+  select,
+  textarea,
+  button {
+    color-scheme: light;
+  }
+
+  input,
+  select,
+  textarea {
+    color: #1c1917 !important;
+    background-color: #ffffff !important;
+    -webkit-text-fill-color: #1c1917 !important;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #78716c !important;
+    opacity: 1 !important;
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    color: #44403c !important;
+    background-color: #fafaf9 !important;
+    -webkit-text-fill-color: #44403c !important;
+    opacity: 1 !important;
+  }
+`}</style>
+
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
         <div className="mb-6 sm:mb-8">
           <div className="text-3xl font-extrabold tracking-tight text-stone-900 sm:text-4xl">
