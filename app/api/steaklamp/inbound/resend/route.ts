@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { importHotpepperReservationFromText } from "@/steaklamp/lib/inbound/hotpepper-import";
-import iconv from "iconv-lite";
+import Encoding from "encoding-japanese";
 
 
 export const runtime = "nodejs";
@@ -89,7 +89,13 @@ function decodeHotpepperBody(raw: string) {
       .replace(/\\n/g, "\n")
       .replace(/\\"/g, '"');
 
-    return iconv.decode(Buffer.from(escaped, "binary"), "ISO-2022-JP");
+    const codes = Encoding.stringToCode(escaped);
+    const unicodeArray = Encoding.convert(codes, {
+      from: "JIS",
+      to: "UNICODE",
+    });
+
+    return Encoding.codeToString(unicodeArray);
   } catch (e) {
     console.error("STEAKLAMP_HOTPEPPER_DECODE_FAILED =", e);
     return raw;
