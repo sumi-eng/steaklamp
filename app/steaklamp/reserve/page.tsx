@@ -24,13 +24,10 @@ type SeatCandidate = {
   physicalSeats: string;
 };
 
-const SHOP_PHONE = "088-661-1536"; // 必要ならsteaklampの番号に変更
+const SHOP_PHONE = "088-661-1536";
 const SHOP_TEL_LINK = `tel:${SHOP_PHONE.replace(/-/g, "")}`;
 
-const PLANS: Record<
-  Plan,
-  { label: string; price: number | null; help: string }
-> = {
+const PLANS: Record<Plan, { label: string; price: number | null; help: string }> = {
   seat_only: {
     label: "席のみ",
     price: null,
@@ -139,6 +136,12 @@ function buildTimes() {
   return times;
 }
 
+const inputClass =
+  "h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 text-stone-900 outline-none focus:border-amber-500 placeholder:text-stone-400";
+
+const selectClass =
+  "h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 text-stone-900 outline-none focus:border-amber-500 disabled:bg-stone-100 disabled:text-stone-500";
+
 export default function SteaklampReservePage() {
   const today = useMemo(() => todayJstDateString(), []);
   const [plan, setPlan] = useState<Plan>("seat_only");
@@ -160,8 +163,7 @@ export default function SteaklampReservePage() {
   } | null>(null);
 
   const [calendarMap, setCalendarMap] = useState<Record<string, CalendarDayInfo>>({});
-const [closureMap, setClosureMap] = useState<Record<string, string>>({});
-
+  const [closureMap, setClosureMap] = useState<Record<string, string>>({});
 
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [timeOptions, setTimeOptions] = useState<string[]>([]);
@@ -257,92 +259,89 @@ const [closureMap, setClosureMap] = useState<Record<string, string>>({});
   }, [visibleMonth, persons, counterOk]);
 
   useEffect(() => {
-  let cancelled = false;
+    let cancelled = false;
 
-  async function fetchClosures() {
-    try {
-      const res = await fetch("/api/steaklamp/closures", {
-        cache: "no-store",
-      });
-      const json = await res.json().catch(() => ({}));
+    async function fetchClosures() {
+      try {
+        const res = await fetch("/api/steaklamp/closures", {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      if (json.ok) {
-        const next: Record<string, string> = {};
-        for (const c of json.items ?? []) {
-          next[String(c.closed_on)] = String(c.reason ?? "臨時休業");
+        if (json.ok) {
+          const next: Record<string, string> = {};
+          for (const c of json.items ?? []) {
+            next[String(c.closed_on)] = String(c.reason ?? "臨時休業");
+          }
+          setClosureMap(next);
+        } else {
+          setClosureMap({});
         }
-        setClosureMap(next);
-      } else {
-        setClosureMap({});
-      }
-    } catch {
-      if (!cancelled) setClosureMap({});
-    }
-  }
-
-  fetchClosures();
-
-  return () => {
-    cancelled = true;
-  };
-}, []);
-
-useEffect(() => {
-  let cancelled = false;
-
-  async function fetchTimes() {
-    if (!date) return;
-
-    setTimeLoading(true);
-
-    try {
-      const checks = await Promise.all(
-        allTimes.map(async (t) => {
-          const res = await fetch("/api/steaklamp/seats/search", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              persons,
-              startAt: `${date}T${t}:00+09:00`,
-              duration,
-              counterOk,
-            }),
-          });
-
-          const json = await res.json().catch(() => ({}));
-          const seats = json.ok ? ((json.seats as SeatCandidate[]) ?? []) : [];
-
-          return seats.length > 0 ? t : null;
-        })
-      );
-
-      const available = checks.filter(Boolean) as string[];
-
-      if (!cancelled) {
-        setTimeOptions(available);
-      }
-    } catch {
-      if (!cancelled) {
-        setTimeOptions([]);
-      }
-    } finally {
-      if (!cancelled) {
-        setTimeLoading(false);
+      } catch {
+        if (!cancelled) setClosureMap({});
       }
     }
-  }
 
-  fetchTimes();
+    fetchClosures();
 
-  return () => {
-    cancelled = true;
-  };
-}, [date, persons, counterOk, allTimes]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  
+  useEffect(() => {
+    let cancelled = false;
 
+    async function fetchTimes() {
+      if (!date) return;
+
+      setTimeLoading(true);
+
+      try {
+        const checks = await Promise.all(
+          allTimes.map(async (t) => {
+            const res = await fetch("/api/steaklamp/seats/search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                persons,
+                startAt: `${date}T${t}:00+09:00`,
+                duration,
+                counterOk,
+              }),
+            });
+
+            const json = await res.json().catch(() => ({}));
+            const seats = json.ok ? ((json.seats as SeatCandidate[]) ?? []) : [];
+
+            return seats.length > 0 ? t : null;
+          })
+        );
+
+        const available = checks.filter(Boolean) as string[];
+
+        if (!cancelled) {
+          setTimeOptions(available);
+        }
+      } catch {
+        if (!cancelled) {
+          setTimeOptions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setTimeLoading(false);
+        }
+      }
+    }
+
+    fetchTimes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [date, persons, counterOk, allTimes]);
 
   function getCalendarStatus(
     ymd: string
@@ -367,25 +366,25 @@ useEffect(() => {
     if (!guestName.trim()) return "お名前を入力してください。";
     if (!phone.trim()) return "電話番号を入力してください。";
     if (!date) return "日付を選択してください。";
-if (!time) return "時間を選択してください。";
-const now = new Date();
-const selected = new Date(`${date}T${time}:00+09:00`);
+    if (!time) return "時間を選択してください。";
 
-if (selected < now) {
-  return "過去の日時は選択できません。";
-}
+    const now = new Date();
+    const selected = new Date(`${date}T${time}:00+09:00`);
 
+    if (selected < now) {
+      return "過去の日時は選択できません。";
+    }
 
-if (!timeLoading && timeOptions.length > 0 && !timeOptions.includes(time)) {
-  return "この条件ではご予約いただけません。人数または時間を変更してください。";
-}
+    if (!timeLoading && timeOptions.length > 0 && !timeOptions.includes(time)) {
+      return "この条件ではご予約いただけません。人数または時間を変更してください。";
+    }
 
-if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してください。";
-
+    if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してください。";
     if (!isValidEmail(email.trim())) return "メールアドレスの形式をご確認ください。";
     if (persons >= 13) return "13名以上のご予約はお電話でお問い合わせください。";
     if (date < minDate) return "受付期限を過ぎています。";
     if (date > maxDate) return "予約可能期間外です。";
+
     return null;
   }
 
@@ -468,18 +467,20 @@ if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してく�
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900">
+    <div className="min-h-screen bg-stone-50 text-stone-900 [color-scheme:light]">
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
         <div className="mb-6 sm:mb-8">
-          <div className="text-3xl font-extrabold tracking-tight sm:text-4xl">
+          <div className="text-3xl font-extrabold tracking-tight text-stone-900 sm:text-4xl">
             Passion for Grilling Lamp
           </div>
           <div className="mt-2 text-sm text-stone-600 sm:text-base">ネット予約</div>
         </div>
 
-        <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white text-stone-900 shadow-sm">
           <div className="border-b border-stone-100 px-5 py-5 sm:px-8 sm:py-6">
-            <div className="text-xl font-bold sm:text-2xl">ご予約フォーム</div>
+            <div className="text-xl font-bold text-stone-900 sm:text-2xl">
+              ご予約フォーム
+            </div>
             <div className="mt-2 text-sm text-stone-600">{PLANS[plan].help}</div>
           </div>
 
@@ -497,12 +498,14 @@ if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してく�
 
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <label className="mb-2 block text-sm font-bold">プラン</label>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  プラン
+                </label>
                 <div className="grid gap-3 sm:grid-cols-4">
                   {(Object.keys(PLANS) as Plan[]).map((key) => (
                     <label
                       key={key}
-                      className="cursor-pointer rounded-2xl border border-stone-200 p-4 hover:bg-stone-50"
+                      className="cursor-pointer rounded-2xl border border-stone-200 bg-white p-4 text-stone-900 hover:bg-stone-50"
                     >
                       <input
                         type="radio"
@@ -515,14 +518,14 @@ if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してく�
                           setErrorMessage(null);
                         }}
                       />
-                      <span className="font-bold">{PLANS[key].label}</span>
+                      <span className="font-bold text-stone-900">{PLANS[key].label}</span>
                       <div className="mt-1 text-xs text-stone-600">{PLANS[key].help}</div>
                     </label>
                   ))}
                 </div>
               </div>
 
-              <div className="sm:col-span-2 -mx-1 rounded-3xl border border-stone-200 bg-white p-3 sm:mx-0 sm:p-5">
+              <div className="sm:col-span-2 -mx-1 rounded-3xl border border-stone-200 bg-white p-3 text-stone-900 sm:mx-0 sm:p-5">
                 <div className="flex items-center justify-between gap-3">
                   <button
                     type="button"
@@ -533,7 +536,7 @@ if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してく�
                         return next < minMonth ? m : next;
                       })
                     }
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-200 text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-30"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     ←
                   </button>
@@ -551,7 +554,7 @@ if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してく�
                         return next > maxMonth ? m : next;
                       })
                     }
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-200 text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-30"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     →
                   </button>
@@ -570,22 +573,21 @@ if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してく�
                 <div className="grid grid-cols-7 gap-2">
                   {calendarDays.map((cell) => {
                     const status = getCalendarStatus(cell.ymd);
-const isSpecialClosed = Boolean(closureMap[cell.ymd]);
-const disabled = isSpecialClosed || status === "closed" || status === "full";
-const selected = !isSpecialClosed && status === "selected";
-
+                    const isSpecialClosed = Boolean(closureMap[cell.ymd]);
+                    const disabled =
+                      isSpecialClosed || status === "closed" || status === "full";
+                    const selected = !isSpecialClosed && status === "selected";
 
                     let mark = "×";
 
-if (isSpecialClosed) {
-  mark = "ー";
-} else {
-  if (status === "available" || status === "selected") mark = "◯";
-  if (status === "few") mark = "△";
-  if (status === "full") mark = "×";
-  if (status === "closed") mark = "ー";
-}
-
+                    if (isSpecialClosed) {
+                      mark = "ー";
+                    } else {
+                      if (status === "available" || status === "selected") mark = "◯";
+                      if (status === "few") mark = "△";
+                      if (status === "full") mark = "×";
+                      if (status === "closed") mark = "ー";
+                    }
 
                     return (
                       <button
@@ -631,16 +633,15 @@ if (isSpecialClosed) {
                             "mt-1 text-[22px] font-bold leading-none sm:text-xl",
                             selected
                               ? "text-white"
-                             : isSpecialClosed
-? "text-red-500"
-: status === "available"
-? "text-emerald-600"
-: status === "few"
-? "text-amber-600"
-: status === "full"
-? "text-red-500"
-: "text-stone-400",
-
+                              : isSpecialClosed
+                              ? "text-red-500"
+                              : status === "available"
+                              ? "text-emerald-600"
+                              : status === "few"
+                              ? "text-amber-600"
+                              : status === "full"
+                              ? "text-red-500"
+                              : "text-stone-400",
                           ].join(" ")}
                         >
                           {mark}
@@ -660,22 +661,26 @@ if (isSpecialClosed) {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-bold">ご来店日</label>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  ご来店日
+                </label>
                 <input
                   type="text"
                   value={date}
                   readOnly
-                  className="h-12 w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 outline-none"
+                  className="h-12 w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 text-stone-900 outline-none"
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-bold">ご来店時間</label>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  ご来店時間
+                </label>
                 <select
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                   disabled={timeLoading || timeOptions.length === 0}
-                  className="h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 outline-none focus:border-amber-500 disabled:bg-stone-100 disabled:text-stone-500"
+                  className={selectClass}
                 >
                   {timeOptions.length === 0 ? (
                     <option value="">
@@ -684,32 +689,28 @@ if (isSpecialClosed) {
                   ) : null}
 
                   {time && !timeOptions.includes(time) ? (
-  <option value={time}>
-    {time}（この人数では空席不足）
-  </option>
-) : null}
+                    <option value={time}>{time}（この人数では空席不足）</option>
+                  ) : null}
 
-{timeOptions.map((t) => (
-  <option key={t} value={t}>
-    {t}
-  </option>
-))}
+                  {timeOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
 
-              </select>
-
-{time && !timeLoading && timeOptions.length > 0 && !timeOptions.includes(time) ? (
-  <div className="mt-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
-    この時間は人数条件に合うテーブル席が確保できません。
-    人数を減らすか、別の時間をお選びください。
-  </div>
-) : null}
-
-
-
+                {time && !timeLoading && timeOptions.length > 0 && !timeOptions.includes(time) ? (
+                  <div className="mt-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+                    この時間は人数条件に合うテーブル席が確保できません。
+                    人数を減らすか、別の時間をお選びください。
+                  </div>
+                ) : null}
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-bold">人数</label>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  人数
+                </label>
                 <select
                   value={persons}
                   onChange={(e) => {
@@ -717,7 +718,7 @@ if (isSpecialClosed) {
                     setSuccess(null);
                     setErrorMessage(null);
                   }}
-                  className="h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 outline-none focus:border-amber-500"
+                  className={selectClass}
                 >
                   {Array.from({ length: 12 }).map((_, i) => {
                     const n = i + 1;
@@ -731,8 +732,10 @@ if (isSpecialClosed) {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-bold">お席の希望</label>
-                <label className="inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-300 px-4">
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  お席の希望
+                </label>
+                <label className="inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-300 bg-white px-4 text-stone-900">
                   <input
                     type="checkbox"
                     checked={counterOk}
@@ -743,45 +746,53 @@ if (isSpecialClosed) {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-bold">お名前</label>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  お名前
+                </label>
                 <input
                   type="text"
                   value={guestName}
                   onChange={(e) => setGuestName(e.target.value)}
-                  className="h-12 w-full rounded-2xl border border-stone-300 px-4 outline-none focus:border-amber-500"
+                  className={inputClass}
                   placeholder="山田 太郎"
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-bold">電話番号</label>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  電話番号
+                </label>
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="h-12 w-full rounded-2xl border border-stone-300 px-4 outline-none focus:border-amber-500"
+                  className={inputClass}
                   placeholder="09012345678"
                 />
               </div>
 
               <div className="sm:col-span-2">
-                <label className="mb-2 block text-sm font-bold">メールアドレス</label>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  メールアドレス
+                </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="h-12 w-full rounded-2xl border border-stone-300 px-4 outline-none focus:border-amber-500"
+                  className={inputClass}
                   placeholder="example@example.com"
                 />
               </div>
 
               <div className="sm:col-span-2">
-                <label className="mb-2 block text-sm font-bold">備考</label>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  備考
+                </label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={4}
-                  className="w-full rounded-2xl border border-stone-300 px-4 py-3 outline-none focus:border-amber-500"
+                  className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-900 outline-none focus:border-amber-500 placeholder:text-stone-400"
                   placeholder="アレルギー、ご要望など"
                 />
               </div>
@@ -819,7 +830,7 @@ if (isSpecialClosed) {
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
                   <a
                     href={SHOP_TEL_LINK}
-                    className="inline-flex h-12 items-center justify-center rounded-2xl border border-stone-300 px-6 font-bold text-stone-700 hover:bg-stone-50"
+                    className="inline-flex h-12 items-center justify-center rounded-2xl border border-stone-300 bg-white px-6 font-bold text-stone-700 hover:bg-stone-50"
                   >
                     当日予約はお電話へ
                   </a>
