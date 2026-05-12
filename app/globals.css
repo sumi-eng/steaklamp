@@ -24,3 +24,36 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+html {
+  color-scheme: light;
+}
+
+input,
+select,
+textarea,
+button {
+  color-scheme: light;
+}
+
+input,
+select,
+textarea {
+  color: #1c1917 !important;
+  background-color: #ffffff !important;
+  -webkit-text-fill-color: #1c1917 !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #78716c !important;
+  opacity: 1 !important;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled,
+button:disabled {
+  color: #57534e !important;
+  -webkit-text-fill-color: #57534e !important;
+  opacity: 1 !important;
+}
