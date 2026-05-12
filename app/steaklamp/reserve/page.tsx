@@ -164,13 +164,12 @@ export default function SteaklampReservePage() {
 
   const [calendarMap, setCalendarMap] = useState<Record<string, CalendarDayInfo>>({});
   const [closureMap, setClosureMap] = useState<Record<string, string>>({});
-
   const [calendarLoading, setCalendarLoading] = useState(false);
-  const [timeOptions, setTimeOptions] = useState<string[]>([]);
-  const [timeLoading, setTimeLoading] = useState(false);
 
   const duration = 120;
   const allTimes = useMemo(() => buildTimes(), []);
+  const timeOptions = allTimes;
+  const timeLoading = false;
 
   const minDate = useMemo(() => {
     if (plan === "course_c") return addDays(today, 3);
@@ -191,7 +190,7 @@ export default function SteaklampReservePage() {
     if (!date || isBeforeDate(date, minDate)) {
       setDate(minDate);
     }
-  }, [minDate]);
+  }, [date, minDate]);
 
   useEffect(() => {
     const base = date ? parseYmd(date) : parseYmd(minDate);
@@ -212,38 +211,26 @@ export default function SteaklampReservePage() {
       setCalendarLoading(true);
 
       try {
-        const months = [
-          addMonths(visibleMonth, -1),
-          visibleMonth,
-          addMonths(visibleMonth, 1),
-        ];
+        const qs = new URLSearchParams({
+          month: monthKey(visibleMonth),
+          persons: String(persons),
+          duration: String(duration),
+          counterOk: counterOk ? "1" : "0",
+        });
 
-        const results = await Promise.all(
-          months.map(async (m) => {
-            const qs = new URLSearchParams({
-              month: monthKey(m),
-              persons: String(persons),
-              duration: String(duration),
-              counterOk: counterOk ? "1" : "0",
-            });
+        const res = await fetch(`/api/steaklamp/calendar?${qs.toString()}`, {
+          cache: "no-store",
+        });
 
-            const res = await fetch(`/api/steaklamp/calendar?${qs.toString()}`, {
-              cache: "no-store",
-            });
+        const json = (await res.json().catch(() => ({}))) as CalendarResponse;
 
-            const json = (await res.json().catch(() => ({}))) as CalendarResponse;
-            if (!res.ok || !json.ok) return null;
-            return json.days;
-          })
-        );
-
-        const next: Record<string, CalendarDayInfo> = {};
-        for (const result of results) {
-          if (!result) continue;
-          Object.assign(next, result);
+        if (!cancelled) {
+          if (res.ok && json.ok) {
+            setCalendarMap(json.days ?? {});
+          } else {
+            setCalendarMap({});
+          }
         }
-
-        if (!cancelled) setCalendarMap(next);
       } catch {
         if (!cancelled) setCalendarMap({});
       } finally {
@@ -291,58 +278,6 @@ export default function SteaklampReservePage() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchTimes() {
-      if (!date) return;
-
-      setTimeLoading(true);
-
-      try {
-        const checks = await Promise.all(
-          allTimes.map(async (t) => {
-            const res = await fetch("/api/steaklamp/seats/search", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                persons,
-                startAt: `${date}T${t}:00+09:00`,
-                duration,
-                counterOk,
-              }),
-            });
-
-            const json = await res.json().catch(() => ({}));
-            const seats = json.ok ? ((json.seats as SeatCandidate[]) ?? []) : [];
-
-            return seats.length > 0 ? t : null;
-          })
-        );
-
-        const available = checks.filter(Boolean) as string[];
-
-        if (!cancelled) {
-          setTimeOptions(available);
-        }
-      } catch {
-        if (!cancelled) {
-          setTimeOptions([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setTimeLoading(false);
-        }
-      }
-    }
-
-    fetchTimes();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [date, persons, counterOk, allTimes]);
-
   function getCalendarStatus(
     ymd: string
   ): "available" | "few" | "full" | "closed" | "selected" {
@@ -373,10 +308,6 @@ export default function SteaklampReservePage() {
 
     if (selected < now) {
       return "過去の日時は選択できません。";
-    }
-
-    if (!timeLoading && timeOptions.length > 0 && !timeOptions.includes(time)) {
-      return "この条件ではご予約いただけません。人数または時間を変更してください。";
     }
 
     if (!Number.isFinite(persons) || persons <= 0) return "人数を確認してください。";
@@ -410,11 +341,11 @@ export default function SteaklampReservePage() {
         body: JSON.stringify({ persons, startAt, duration, counterOk }),
       });
 
-      const seatJson = await seatRes.json();
+      const seatJson = await seatRes.json().catch(() => ({}));
       const candidates = seatJson.ok ? (seatJson.seats as SeatCandidate[]) ?? [] : [];
 
       if (candidates.length === 0) {
-        setErrorMessage("申し訳ありません。この条件では空席がありません。");
+        setErrorMessage("申し訳ありません。この条件では空席がありません。人数または時間を変更してください。");
         return;
       }
 
@@ -679,32 +610,14 @@ export default function SteaklampReservePage() {
                 <select
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  disabled={timeLoading || timeOptions.length === 0}
                   className={selectClass}
                 >
-                  {timeOptions.length === 0 ? (
-                    <option value="">
-                      {timeLoading ? "時間候補を確認中..." : "選べる時間がありません"}
-                    </option>
-                  ) : null}
-
-                  {time && !timeOptions.includes(time) ? (
-                    <option value={time}>{time}（この人数では空席不足）</option>
-                  ) : null}
-
                   {timeOptions.map((t) => (
                     <option key={t} value={t}>
                       {t}
                     </option>
                   ))}
                 </select>
-
-                {time && !timeLoading && timeOptions.length > 0 && !timeOptions.includes(time) ? (
-                  <div className="mt-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
-                    この時間は人数条件に合うテーブル席が確保できません。
-                    人数を減らすか、別の時間をお選びください。
-                  </div>
-                ) : null}
               </div>
 
               <div>
@@ -739,7 +652,11 @@ export default function SteaklampReservePage() {
                   <input
                     type="checkbox"
                     checked={counterOk}
-                    onChange={(e) => setCounterOk(e.target.checked)}
+                    onChange={(e) => {
+                      setCounterOk(e.target.checked);
+                      setSuccess(null);
+                      setErrorMessage(null);
+                    }}
                   />
                   カウンター席でも可
                 </label>
@@ -837,7 +754,7 @@ export default function SteaklampReservePage() {
 
                   <button
                     type="submit"
-                    disabled={submitting || timeLoading}
+                    disabled={submitting}
                     className="inline-flex h-12 items-center justify-center rounded-2xl bg-amber-500 px-6 font-extrabold text-stone-900 shadow-sm hover:bg-amber-400 disabled:bg-stone-300 disabled:text-stone-500"
                   >
                     {submitting ? "送信中..." : "予約を確定する"}
@@ -851,3 +768,4 @@ export default function SteaklampReservePage() {
     </div>
   );
 }
+
