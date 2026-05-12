@@ -352,7 +352,39 @@ function openClosureModal() {
 
 
   return (
-    <main className="min-h-screen bg-stone-50 p-4 md:p-6">
+    <main className="min-h-screen bg-stone-50 p-4 text-stone-900 [color-scheme:light] md:p-6">
+    <style jsx global>{`
+      input,
+      select,
+      textarea,
+      button {
+        color-scheme: light;
+      }
+
+      input,
+      select,
+      textarea {
+        color: #1c1917 !important;
+        background-color: #ffffff !important;
+        -webkit-text-fill-color: #1c1917 !important;
+      }
+
+      input::placeholder,
+      textarea::placeholder {
+        color: #78716c !important;
+        opacity: 1 !important;
+      }
+
+      input:disabled,
+      select:disabled,
+      textarea:disabled {
+        color: #44403c !important;
+        background-color: #fafaf9 !important;
+        -webkit-text-fill-color: #44403c !important;
+        opacity: 1 !important;
+      }
+    `}</style>
+
       <div className="mx-auto max-w-[1400px]">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
   <div>
