@@ -429,14 +429,13 @@ export default function SteaklampReservePage() {
     -webkit-text-fill-color: #44403c !important;
     opacity: 1 !important;
   }
-`}
-
  button:disabled {
     color: #57534e !important;
     -webkit-text-fill-color: #57534e !important;
     opacity: 1 !important;
   }
 
+`}
 </style>
 
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
