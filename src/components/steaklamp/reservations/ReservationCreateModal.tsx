@@ -382,8 +382,7 @@ useEffect(() => {
               />
             </div>
 
-            <div className="mt-8 flex items-center justify-end gap-4">
-            <div className="sticky bottom-0 -mx-4 mt-8 grid grid-cols-2 gap-3 border-t border-stone-200 bg-white/95 px-4 py-4 md:-mx-6 md:px-6">
+                       <div className="sticky bottom-0 -mx-4 mt-8 grid grid-cols-2 gap-3 border-t border-stone-200 bg-white/95 px-4 py-4 md:-mx-6 md:px-6">
   <button
     type="button"
     onClick={onClose}
