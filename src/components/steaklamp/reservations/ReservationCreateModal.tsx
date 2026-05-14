@@ -383,13 +383,16 @@ useEffect(() => {
             </div>
 
             <div className="mt-8 flex items-center justify-end gap-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="min-w-[180px] rounded-2xl border border-stone-300 px-6 py-3 text-lg font-semibold text-stone-700 hover:bg-stone-100"
-              >
-                閉じる
-              </button>
+             <div className="sticky bottom-0 -mx-4 mt-8 grid grid-cols-2 gap-3 border-t border-stone-200 bg-white/95 px-4 py-4 md:-mx-6 md:px-6">
+  <button
+    type="button"
+    onClick={onClose}
+    disabled={creating}
+    className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-base font-bold text-stone-700 hover:bg-stone-100 disabled:opacity-50"
+  >
+    閉じる
+  </button>
+
 
              <button
   type="button"
