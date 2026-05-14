@@ -401,6 +401,7 @@ useEffect(() => {
     {creating ? "作成中..." : "予約を作成"}
   </button>
 </div>
+</div>
         </div>
       </div>
     </div>
