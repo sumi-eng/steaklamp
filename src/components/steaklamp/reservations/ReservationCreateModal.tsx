@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
   defaultDateKey: string;
@@ -46,6 +46,10 @@ const [coursePrice, setCoursePrice] = useState<number | null>(null);
   const [loadingSeats, setLoadingSeats] = useState(false);
   const [seatMessage, setSeatMessage] = useState("");
 
+const [creating, setCreating] = useState(false);
+const lastSearchKeyRef = useRef("");
+
+
   const canSearchSeats = useMemo(() => {
     return persons > 0 && !!startAt && duration > 0;
   }, [persons, startAt, duration]);
@@ -54,97 +58,124 @@ const [coursePrice, setCoursePrice] = useState<number | null>(null);
   setSelectedSeatId("");
   setCandidates([]);
   setSeatMessage("");
+  lastSearchKeyRef.current = "";
 }, [persons, startAt, duration, counterOk]);
 
+useEffect(() => {
+  loadSeatCandidates();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [persons, startAt, duration, counterOk]);
+
+
+
   async function loadSeatCandidates() {
-    if (!canSearchSeats) {
-      setCandidates([]);
-      setSeatMessage("先に日時・人数・滞在時間を入力してください。");
+  if (!canSearchSeats) {
+    setCandidates([]);
+    setSeatMessage("先に日時・人数・滞在時間を入力してください。");
+    return;
+  }
+
+  const searchKey = JSON.stringify({
+    persons,
+    startAt,
+    duration,
+    counterOk,
+  });
+
+  if (loadingSeats) return;
+  if (lastSearchKeyRef.current === searchKey && candidates.length > 0) return;
+
+  lastSearchKeyRef.current = searchKey;
+  setLoadingSeats(true);
+  setSeatMessage("");
+
+  try {
+    const res = await fetch("/api/steaklamp/seats/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        persons,
+        startAt,
+        duration,
+        counterOk,
+      }),
+    });
+
+    const data = await res.json();
+    const seats = data.seats || [];
+
+    setCandidates(seats);
+
+    if (seats.length === 0) {
+      setSeatMessage("条件に合う候補席がありません。");
+    }
+  } catch (e) {
+    setCandidates([]);
+    setSeatMessage("候補席の取得に失敗しました。");
+  } finally {
+    setLoadingSeats(false);
+  }
+}
+
+
+ async function handleCreate() {
+  if (creating) return;
+
+  if (!selectedSeatId) {
+    alert("席を選択してください");
+    return;
+  }
+
+  setCreating(true);
+
+  try {
+    const res = await fetch("/api/steaklamp/reservations/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        phone,
+        email,
+        persons,
+        startAt,
+        duration,
+        notes,
+        counterOk,
+        seatId: selectedSeatId,
+        course_name_snapshot: courseName,
+        course_price_snapshot: coursePrice,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "予約作成に失敗しました");
       return;
     }
 
-    setLoadingSeats(true);
-    setSeatMessage("");
-
-    try {
-      const res = await fetch("/api/steaklamp/seats/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          persons,
-          startAt,
-          duration,
-          counterOk,
-        }),
-      });
-
-      const data = await res.json();
-      const seats = data.seats || [];
-
-      setCandidates(seats);
-
-      if (seats.length === 0) {
-        setSeatMessage("条件に合う候補席がありません。");
-      }
-    } catch (e) {
-      setCandidates([]);
-      setSeatMessage("候補席の取得に失敗しました。");
-    } finally {
-      setLoadingSeats(false);
-    }
+    onCreated();
+    onClose();
+  } catch (e) {
+    alert("予約作成に失敗しました");
+  } finally {
+    setCreating(false);
   }
+}
 
-  async function handleCreate() {
-    if (!selectedSeatId) {
-      alert("席を選択してください");
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/steaklamp/reservations/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-       body: JSON.stringify({
-  name,
-  phone,
-  email,
-  persons,
-  startAt,
-  duration,
-  notes,
-  counterOk,
-  seatId: selectedSeatId,
-  course_name_snapshot: courseName,
-  course_price_snapshot: coursePrice,
-}),
-
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        alert(data.error || "予約作成に失敗しました");
-        return;
-      }
-
-      onCreated();
-      onClose();
-    } catch (e) {
-      alert("予約作成に失敗しました");
-    }
-  }
 
   const selectedSeat = candidates.find((seat) => seat.id === selectedSeatId) || null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4">
       <div className="flex min-h-full items-start justify-center py-6">
-        <div className="w-full max-w-4xl rounded-3xl bg-white shadow-2xl">
-          <div className="max-h-[85vh] overflow-y-auto p-6">
+       <div className="relative w-full max-w-4xl rounded-3xl bg-white shadow-2xl">
+  <div className="max-h-[90dvh] overflow-y-auto p-4 pb-28 md:p-6">
+
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-2xl font-bold text-stone-900">予約追加</h2>
               <button
@@ -208,14 +239,7 @@ const [coursePrice, setCoursePrice] = useState<number | null>(null);
                 <select
                   value={selectedSeatId}
                   onChange={(e) => setSelectedSeatId(e.target.value)}
-                  onFocus={() => {
-  loadSeatCandidates();
-}}
-onClick={() => {
-  loadSeatCandidates();
-}}
-
-                  className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none focus:border-stone-500"
+                                    className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none focus:border-stone-500"
                 >
                   <option value="">
                     {loadingSeats
@@ -367,13 +391,15 @@ onClick={() => {
                 閉じる
               </button>
 
-              <button
-                type="button"
-                onClick={handleCreate}
-                className="min-w-[260px] rounded-2xl bg-stone-900 px-6 py-3 text-lg font-semibold text-white hover:bg-stone-800"
-              >
-                予約を作成
-              </button>
+             <button
+  type="button"
+  disabled={creating}
+  onClick={handleCreate}
+  className="min-w-[260px] rounded-2xl bg-stone-900 px-6 py-3 text-lg font-semibold text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+>
+  {creating ? "作成中..." : "予約を作成"}
+</button>
+
             </div>
           </div>
         </div>
