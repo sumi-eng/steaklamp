@@ -257,6 +257,48 @@ if (startAt < now) {
   );
 }
 
+// ===== コース受付締切チェック =====
+const courseNameText = String(courseName || "席のみ").trim();
+
+const reservationDateKey = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(startAt);
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const d = new Date(`${dateKey}T00:00:00+09:00`);
+  d.setDate(d.getDate() + days);
+
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+const deadlineDateKey =
+  courseNameText === "Cコース"
+    ? addDaysToDateKey(reservationDateKey, -3)
+    : addDaysToDateKey(reservationDateKey, -1);
+
+const deadline = new Date(`${deadlineDateKey}T23:59:59+09:00`);
+
+if (now > deadline) {
+  return json(
+    {
+      ok: false,
+      error:
+        courseNameText === "Cコース"
+          ? "Cコースは3日前までの受付です"
+          : "席のみ・Aコース・Bコースは前日までの受付です",
+    },
+    400
+  );
+}
+
 
     const endAt = addMinutes(startAt, duration);
 
