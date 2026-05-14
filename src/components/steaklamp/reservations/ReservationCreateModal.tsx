@@ -383,7 +383,7 @@ useEffect(() => {
             </div>
 
             <div className="mt-8 flex items-center justify-end gap-4">
-             <div className="sticky bottom-0 -mx-4 mt-8 grid grid-cols-2 gap-3 border-t border-stone-200 bg-white/95 px-4 py-4 md:-mx-6 md:px-6">
+            <div className="sticky bottom-0 -mx-4 mt-8 grid grid-cols-2 gap-3 border-t border-stone-200 bg-white/95 px-4 py-4 md:-mx-6 md:px-6">
   <button
     type="button"
     onClick={onClose}
@@ -393,17 +393,16 @@ useEffect(() => {
     閉じる
   </button>
 
+  <button
+    type="button"
+    disabled={creating}
+    onClick={handleCreate}
+    className="w-full rounded-2xl bg-stone-900 px-4 py-3 text-base font-bold text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
+  >
+    {creating ? "作成中..." : "予約を作成"}
+  </button>
+</div>
 
-             <button
-  type="button"
-  disabled={creating}
-  onClick={handleCreate}
-  className="min-w-[260px] rounded-2xl bg-stone-900 px-6 py-3 text-lg font-semibold text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
->
-  {creating ? "作成中..." : "予約を作成"}
-</button>
-
-            </div>
           </div>
         </div>
       </div>
