@@ -570,23 +570,26 @@ function openClosureModal() {
         <div className="overflow-x-auto rounded-3xl border border-stone-200 bg-white shadow-sm">
            <div className="grid min-w-[980px]"
   style={{
-    gridTemplateColumns: `56px repeat(${totalSlots}, 30px)`,
+    gridTemplateColumns: `68px repeat(${totalSlots}, 30px)`,
   }}
 >
 
             <div className="sticky left-0 z-20 border-b border-r border-stone-200 bg-stone-900 px-2 py-2 text-sm font-bold text-white">
               席
             </div>
-
-           {timeSlots.map((slot, index) => {
+{timeSlots.map((slot) => {
   const showLabel = slot.endsWith(":00");
 
   return (
     <div
       key={slot}
-      className="border-b border-r border-stone-700 bg-stone-900 px-1 py-3 text-center text-sm font-bold text-white"
+      className="relative z-10 overflow-visible border-b border-r border-stone-700 bg-stone-900"
     >
-      {showLabel ? slot : ""}
+      {showLabel ? (
+        <div className="absolute left-2 top-3 whitespace-nowrap text-sm font-bold text-white">
+          {slot}
+        </div>
+      ) : null}
     </div>
   );
 })}
