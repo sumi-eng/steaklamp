@@ -31,17 +31,17 @@ const PLANS: Record<Plan, { label: string; price: number | null; help: string }>
   seat_only: {
     label: "席のみ",
     price: null,
-    help: "前日まで受付。お料理はご来店後にご注文ください。",
+    help: "当日１５時まで受付。お料理はご来店後にご注文ください。",
   },
   course_a: {
     label: "Aコース",
     price: 6600,
-    help: "前日まで受付。6,600円（税込）",
+    help: "当日１５時まで受付。6,600円（税込）",
   },
   course_b: {
     label: "Bコース",
     price: 8800,
-    help: "前日まで受付。8,800円（税込）",
+    help: "当日１５時まで受付。8,800円（税込）",
   },
   course_c: {
     label: "Cコース",
@@ -462,7 +462,7 @@ export default function SteaklampReservePage() {
                 <li>・ネット予約は18:00〜20:00開始、120分制です。</li>
                 <li>・水曜日は定休日です。</li>
                 <li>・Cコースは3日前までの受付です。</li>
-                <li>・A/Bコース、席のみは前日までの受付です。</li>
+                <li>・A/Bコース、席のみは当日１５時までの受付です。</li>
               </ul>
             </div>
 
@@ -788,7 +788,7 @@ export default function SteaklampReservePage() {
                     href={SHOP_TEL_LINK}
                     className="inline-flex h-12 items-center justify-center rounded-2xl border border-stone-300 bg-white px-6 font-bold text-stone-700 hover:bg-stone-50"
                   >
-                    当日予約はお電話へ
+                    当日１５時以降は予約はお電話へ
                   </a>
 
                   <button

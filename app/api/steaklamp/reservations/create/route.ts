@@ -267,24 +267,29 @@ const reservationDateKey = new Intl.DateTimeFormat("sv-SE", {
   day: "2-digit",
 }).format(startAt);
 
-function addDaysToDateKey(dateKey: string, days: number) {
-  const d = new Date(`${dateKey}T00:00:00+09:00`);
-  d.setDate(d.getDate() + days);
-
+function formatDateKey(date: Date) {
   return new Intl.DateTimeFormat("sv-SE", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(d);
+  }).format(date);
 }
 
-const deadlineDateKey =
-  courseNameText === "Cコース"
-    ? addDaysToDateKey(reservationDateKey, -3)
-    : addDaysToDateKey(reservationDateKey, -1);
+let deadline: Date;
 
-const deadline = new Date(`${deadlineDateKey}T23:59:59+09:00`);
+if (courseNameText === "Cコース") {
+  const d = new Date(`${reservationDateKey}T00:00:00+09:00`);
+  d.setDate(d.getDate() - 3);
+
+  const key = formatDateKey(d);
+
+  // Cコースは3日前23:59まで
+  deadline = new Date(`${key}T23:59:59+09:00`);
+} else {
+  // 席のみ・A・Bは当日15:00まで
+  deadline = new Date(`${reservationDateKey}T15:00:00+09:00`);
+}
 
 if (now > deadline) {
   return json(
@@ -293,7 +298,7 @@ if (now > deadline) {
       error:
         courseNameText === "Cコース"
           ? "Cコースは3日前までの受付です"
-          : "席のみ・Aコース・Bコースは前日までの受付です",
+          : "席のみ・Aコース・Bコースは当日15時までの受付です",
     },
     400
   );
