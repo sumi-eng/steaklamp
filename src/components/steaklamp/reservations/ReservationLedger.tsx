@@ -568,9 +568,7 @@ function openClosureModal() {
         </div>
 
         <div className="overflow-x-auto rounded-3xl border border-stone-200 bg-white shadow-sm">
-          <div
-           <div
-  className="grid min-w-[980px]"
+           <div className="grid min-w-[980px]"
   style={{
     gridTemplateColumns: `72px repeat(${totalSlots}, 56px)`,
   }}
