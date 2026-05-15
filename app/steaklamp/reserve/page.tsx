@@ -137,7 +137,7 @@ function buildTimes() {
 }
 
 const inputClass =
-  "h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 text-stone-900 outline-none focus:border-amber-500 placeholder:text-stone-200";
+  "h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 text-stone-700 outline-none focus:border-amber-500 placeholder:font-normal placeholder:text-stone-300 placeholder:opacity-60";
 
 const selectClass =
   "h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 text-stone-900 outline-none focus:border-amber-500 disabled:bg-stone-100 disabled:text-stone-500";
@@ -759,7 +759,8 @@ export default function SteaklampReservePage() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={4}
-                  className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-900 outline-none focus:border-amber-500 placeholder:text-stone-200"
+                  className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-900 outline-none focus:border-amber-500 placeholder:font-normal placeholder:text-stone-300 placeholder:opacity-60"
+
                   placeholder="アレルギー、ご要望など"
                 />
               </div>
