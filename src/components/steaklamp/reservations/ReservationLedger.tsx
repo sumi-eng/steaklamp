@@ -571,10 +571,10 @@ function openClosureModal() {
           <div
             className="grid min-w-[1200px]"
             style={{
-              gridTemplateColumns: `120px repeat(${totalSlots}, minmax(72px, 1fr))`,
+              gridTemplateColumns: `88px repeat(${totalSlots}, minmax(68px, 1fr))`,
             }}
           >
-            <div className="sticky left-0 z-20 border-b border-r border-stone-200 bg-stone-900 px-4 py-4 text-sm font-bold text-white">
+            <div className="sticky left-0 z-20 border-b border-r border-stone-200 bg-stone-900 px-2 py-2 text-sm font-bold text-white">
               席
             </div>
 
