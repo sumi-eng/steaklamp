@@ -577,23 +577,25 @@ function openClosureModal() {
             <div className="sticky left-0 z-20 border-b border-r border-stone-200 bg-stone-900 px-2 py-2 text-sm font-bold text-white">
               席
             </div>
-{timeSlots.map((slot) => {
+{timeSlots.map((slot, index) => {
   const showLabel = slot.endsWith(":00");
 
   return (
     <div
       key={slot}
-      className="relative z-10 overflow-visible border-b border-r border-stone-700 bg-stone-900"
+      className="relative border-b border-r border-stone-700 bg-stone-900"
     >
       {showLabel ? (
-        <div className="absolute left-2 top-3 whitespace-nowrap text-sm font-bold text-white">
+        <div
+          className="absolute left-0 top-0 flex h-full items-center justify-center text-sm font-bold text-white"
+          style={{ width: "120px" }}
+        >
           {slot}
         </div>
       ) : null}
     </div>
   );
 })}
-
 
             <div className="sticky left-0 z-10 bg-white">
               {rows.map((row) => (
