@@ -466,6 +466,16 @@ export default function SteaklampReservePage() {
               </ul>
             </div>
 
+<div className="mb-6 flex justify-center">
+  <a
+    href={SHOP_TEL_LINK}
+    className="inline-flex h-12 items-center justify-center rounded-2xl border border-stone-300 bg-white px-6 font-bold text-stone-700 hover:bg-stone-50"
+  >
+    当日15時以降の予約はお電話へ
+  </a>
+</div>
+
+
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label className="mb-2 block text-sm font-bold text-stone-900">
@@ -788,7 +798,7 @@ export default function SteaklampReservePage() {
                     href={SHOP_TEL_LINK}
                     className="inline-flex h-12 items-center justify-center rounded-2xl border border-stone-300 bg-white px-6 font-bold text-stone-700 hover:bg-stone-50"
                   >
-                    当日１５時以降は予約はお電話へ
+                    当日１５時以降の予約はお電話へ
                   </a>
 
                   <button
