@@ -586,12 +586,13 @@ function openClosureModal() {
       className="relative border-b border-r border-stone-700 bg-stone-900"
     >
       {showLabel ? (
-        <div
-          className="absolute left-0 top-0 flex h-full items-center justify-center text-sm font-bold text-white"
-          style={{ width: "120px" }}
-        >
-          {slot}
-        </div>
+       <div
+  className="absolute left-0 top-1 z-10 text-sm font-bold text-white whitespace-nowrap"
+  style={{ width: "120px" }}
+>
+  {slot}
+</div>
+
       ) : null}
     </div>
   );
