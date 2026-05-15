@@ -137,7 +137,7 @@ function buildTimes() {
 }
 
 const inputClass =
-  "h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 text-stone-900 outline-none focus:border-amber-500 placeholder:text-stone-400";
+  "h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 text-stone-900 outline-none focus:border-amber-500 placeholder:text-stone-300";
 
 const selectClass =
   "h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 text-stone-900 outline-none focus:border-amber-500 disabled:bg-stone-100 disabled:text-stone-500";
