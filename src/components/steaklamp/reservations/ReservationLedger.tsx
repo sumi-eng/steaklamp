@@ -569,11 +569,13 @@ function openClosureModal() {
 
         <div className="overflow-x-auto rounded-3xl border border-stone-200 bg-white shadow-sm">
           <div
-            className="grid min-w-[1200px]"
-            style={{
-              gridTemplateColumns: `88px repeat(${totalSlots}, minmax(68px, 1fr))`,
-            }}
-          >
+           <div
+  className="grid min-w-[980px]"
+  style={{
+    gridTemplateColumns: `72px repeat(${totalSlots}, 56px)`,
+  }}
+>
+
             <div className="sticky left-0 z-20 border-b border-r border-stone-200 bg-stone-900 px-2 py-2 text-sm font-bold text-white">
               席
             </div>
@@ -627,7 +629,8 @@ function openClosureModal() {
                   style={{
                     top: `${rowIndex * rowHeight}px`,
                     height: `${rowHeight}px`,
-                    gridTemplateColumns: `repeat(${totalSlots}, minmax(72px, 1fr))`,
+                    gridTemplateColumns: `repeat(${totalSlots}, 56px)`,
+
                   }}
                 >
                   {timeSlots.map((slot, index) => (
