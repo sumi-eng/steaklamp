@@ -811,6 +811,14 @@ export default function SteaklampReservePage() {
                 </div>
               )}
             </div>
+<style jsx global>{`
+  input::placeholder,
+  textarea::placeholder {
+    color: #d6d3d1 !important;
+    opacity: 1 !important;
+  }
+`}</style>
+
           </form>
         </div>
       </div>
