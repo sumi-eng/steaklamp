@@ -469,7 +469,8 @@ export default function SteaklampReservePage() {
 <div className="mb-6 flex justify-center">
   <a
     href={SHOP_TEL_LINK}
-    className="inline-flex h-12 items-center justify-center rounded-2xl border border-stone-300 bg-white px-6 font-bold text-stone-700 hover:bg-stone-50"
+    className="inline-flex h-12 items-center justify-center rounded-2xl bg-amber-500 px-6 font-extrabold text-stone-900 shadow-sm transition hover:bg-amber-400"
+
   >
     当日15時以降の予約はお電話へ
   </a>
