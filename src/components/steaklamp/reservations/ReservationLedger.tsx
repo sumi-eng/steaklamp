@@ -578,14 +578,19 @@ function openClosureModal() {
               席
             </div>
 
-            {timeSlots.map((slot) => (
-              <div
-                key={slot}
-                className="border-b border-r border-stone-700 bg-stone-900 px-2 py-4 text-center text-sm font-bold text-white"
-              >
-                {slot}
-              </div>
-            ))}
+           {timeSlots.map((slot, index) => {
+  const showLabel = slot.endsWith(":00");
+
+  return (
+    <div
+      key={slot}
+      className="border-b border-r border-stone-700 bg-stone-900 px-1 py-3 text-center text-sm font-bold text-white"
+    >
+      {showLabel ? slot : ""}
+    </div>
+  );
+})}
+
 
             <div className="sticky left-0 z-10 bg-white">
               {rows.map((row) => (
