@@ -417,8 +417,8 @@ export default function SteaklampReservePage() {
 
   input::placeholder,
   textarea::placeholder {
-    color: #78716c !important;
-    opacity: 1 !important;
+    color: #a8a29e !important;
+    opacity: 0.55 !important;
   }
 
   input:disabled,
