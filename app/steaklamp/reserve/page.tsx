@@ -758,7 +758,7 @@ export default function SteaklampReservePage() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={4}
-                  className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-900 outline-none focus:border-amber-500 placeholder:text-stone-400"
+                  className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-stone-900 outline-none focus:border-amber-500 placeholder:text-stone-200"
                   placeholder="アレルギー、ご要望など"
                 />
               </div>
@@ -811,14 +811,6 @@ export default function SteaklampReservePage() {
                 </div>
               )}
             </div>
-<style jsx global>{`
-  input::placeholder,
-  textarea::placeholder {
-    color: #d6d3d1 !important;
-    opacity: 1 !important;
-  }
-`}</style>
-
           </form>
         </div>
       </div>
