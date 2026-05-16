@@ -233,6 +233,10 @@ export async function POST(req: Request) {
     const seatId = String(body.seatId ?? "");
     const counterOk = Boolean(body.counterOk ?? false);
 
+const source = String(body.source ?? "web");
+const isAdminCreate = source === "admin";
+
+
     const courseId = body.course_id ?? null;
     const courseName = body.course_name_snapshot ?? null;
     const coursePrice = body.course_price_snapshot ?? null;
@@ -256,6 +260,9 @@ if (startAt < now) {
     400
   );
 }
+
+if (!isAdminCreate) {
+
 
 // ===== コース受付締切チェック =====
 const courseNameText = String(courseName || "席のみ").trim();
@@ -304,6 +311,7 @@ if (now > deadline) {
   );
 }
 
+}
 
     const endAt = addMinutes(startAt, duration);
 
@@ -451,7 +459,7 @@ if (closure) {
       counter_acceptable: counterOk,
       notes,
       status: "booked",
-      source: "web",
+      source,
       cancel_token: cancelToken,
     };
 
