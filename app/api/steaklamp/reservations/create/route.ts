@@ -254,7 +254,7 @@ if (!startAt || Number.isNaN(startAt.getTime())) {
 
 const now = new Date();
 
-if (startAt < now) {
+if (!isAdminCreate && startAt < now) {
   return json(
     { ok: false, error: "過去の日時には予約できません" },
     400
