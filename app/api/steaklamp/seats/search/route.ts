@@ -11,6 +11,26 @@ function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
+function toJstDate(raw: string) {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(value)) {
+    return new Date(value);
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
+    return new Date(`${value}:00+09:00`);
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value)) {
+    return new Date(`${value}+09:00`);
+  }
+
+  return new Date(value);
+}
+
+
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
 }
@@ -42,16 +62,43 @@ function maxCap(seat: SeatRow) {
 }
 
 // 親席IDではなく、実際に使う物理席IDだけに展開する
-function expandPhysicalSeatIds(seatId: string, members: SeatMemberRow[]) {
+function expandPhysicalSeatIds(
+  seatId: string,
+  members: SeatMemberRow[],
+  seats: SeatRow[]
+) {
+  const id = String(seatId);
+
   const childIds = members
-    .filter((m) => String(m.group_seat_id) === String(seatId))
+    .filter((m) => String(m.group_seat_id) === id)
     .map((m) => String(m.member_seat_id));
 
   if (childIds.length > 0) {
     return new Set(childIds);
   }
 
-  return new Set([String(seatId)]);
+  const seat = seats.find((s) => String(s.id) === id);
+  const seatName = String(seat?.name ?? "");
+
+  const idsByName = new Map(seats.map((s) => [String(s.name), String(s.id)]));
+
+  function ids(names: string[]) {
+    return new Set(
+      names
+        .map((name) => idsByName.get(name))
+        .filter(Boolean) as string[]
+    );
+  }
+
+  if (seatName === "右テーブル") return ids(["T1-1", "T1-2"]);
+  if (seatName === "中テーブル") return ids(["T2-1", "T2-2"]);
+  if (seatName === "左テーブル") return ids(["T3-1", "T3-2"]);
+
+  if (seatName === "右6名席") return ids(["T1-1", "T1-2"]);
+  if (seatName === "中6名席") return ids(["T2-1", "T2-2"]);
+  if (seatName === "左6名席") return ids(["T3-1", "T3-2"]);
+
+  return new Set([id]);
 }
 
 function hasSeatConflict(a: Set<string>, b: Set<string>) {
@@ -74,10 +121,12 @@ export async function POST(req: Request) {
       return json({ ok: false, error: "missing_params" }, 400);
     }
 
-    const startAt = new Date(startAtRaw);
-    if (Number.isNaN(startAt.getTime())) {
-      return json({ ok: false, error: "invalid_startAt", startAtRaw }, 400);
-    }
+    const startAt = toJstDate(startAtRaw);
+
+   if (!startAt || Number.isNaN(startAt.getTime())) {
+  return json({ ok: false, error: "invalid_startAt", startAtRaw }, 400);
+}
+
 
     const endAt = addMinutes(startAt, duration);
 
@@ -212,10 +261,9 @@ if (closure) {
 
       if (!overlaps(startAt, endAt, rStart, rEnd)) continue;
 
-      const reservedPhysicalSeatIds = expandPhysicalSeatIds(
-        String(r.seat_id),
-        members
-      );
+      const reservedPhysicalSeatIds = expandPhysicalSeatIds(String(r.seat_id), members, typedSeats)
+
+      ;
 
       for (const id of reservedPhysicalSeatIds) {
         occupiedPhysicalSeatIds.add(id);
@@ -253,10 +301,8 @@ const isSixSeatGroup =
 if (persons >= 6 && isSixSeatGroup) return false;
 
 
-        const candidatePhysicalSeatIds = expandPhysicalSeatIds(
-          String(seat.id),
-          members
-        );
+        const candidatePhysicalSeatIds = expandPhysicalSeatIds(String(seat.id), members, typedSeats)
+;
 
         // 親席IDではなく、物理席同士で重複判定する
         if (hasSeatConflict(candidatePhysicalSeatIds, occupiedPhysicalSeatIds)) {
