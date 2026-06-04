@@ -170,6 +170,16 @@ seatId: String(r.seat_id ?? ""),
   seatName: seat?.name ?? "",
   status: String(r.status ?? "booked"),
   notes: r.notes ?? null,
+assignmentStatus: String(r.assignment_status ?? "assigned"),
+assignment_status: String(r.assignment_status ?? "assigned"),
+warningMessage: r.warning_message ?? null,
+warning_message: r.warning_message ?? null,
+source: r.source ?? null,
+externalSource: r.external_source ?? null,
+external_source: r.external_source ?? null,
+reservationRoute: r.reservation_route ?? null,
+reservation_route: r.reservation_route ?? null,
+
 courseNameSnapshot: r.course_name_snapshot ?? null,
 coursePriceSnapshot: r.course_price_snapshot ?? null,
 course_name_snapshot: r.course_name_snapshot ?? null,
@@ -179,7 +189,11 @@ course_price_snapshot: r.course_price_snapshot ?? null,
 };
 
       })
-      .filter((r) => r.rowIds.length > 0);
+     .filter((r) => {
+  if (r.assignmentStatus !== "assigned") return true;
+  return r.rowIds.length > 0;
+});
+
 
     return json({
       ok: true,

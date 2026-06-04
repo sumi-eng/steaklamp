@@ -91,6 +91,15 @@ courseNameSnapshot?: string | null;
 coursePriceSnapshot?: number | null;
 course_name_snapshot?: string | null;
 course_price_snapshot?: number | null;
+assignmentStatus?: string;
+assignment_status?: string;
+warningMessage?: string | null;
+warning_message?: string | null;
+source?: string | null;
+externalSource?: string | null;
+external_source?: string | null;
+reservationRoute?: string | null;
+reservation_route?: string | null;
 
 };
 
@@ -187,6 +196,21 @@ const dayClosure = useMemo(() => {
   const timeSlots = useMemo(() => buildTimeSlots(18, 22, 15), []);
   const totalSlots = timeSlots.length;
   const rowHeight = 68;
+
+const unassignedReservations = useMemo(() => {
+  return reservationsForDay.filter((r) => {
+    const status = r.assignmentStatus ?? r.assignment_status ?? "assigned";
+    return status !== "assigned" || r.rowIds.length === 0;
+  });
+}, [reservationsForDay]);
+
+const assignedReservations = useMemo(() => {
+  return reservationsForDay.filter((r) => {
+    const status = r.assignmentStatus ?? r.assignment_status ?? "assigned";
+    return status === "assigned" && r.rowIds.length > 0;
+  });
+}, [reservationsForDay]);
+
 
   const calendarDays = useMemo(() => buildCalendarDays(calendarMonth), [calendarMonth]);
 
@@ -567,6 +591,65 @@ function openClosureModal() {
           )}
         </div>
 
+{unassignedReservations.length > 0 && (
+  <div className="mb-4 rounded-3xl border-2 border-red-300 bg-red-50 p-4">
+    <div className="mb-3 text-lg font-black text-red-800">
+      ⚠ 未割当・要対応の予約があります
+    </div>
+
+    <div className="space-y-3">
+      {unassignedReservations.map((reservation) => {
+        const route =
+          reservation.externalSource ??
+          reservation.external_source ??
+          reservation.source ??
+          reservation.reservationRoute ??
+          reservation.reservation_route ??
+          "予約";
+
+        const warning =
+          reservation.warningMessage ??
+          reservation.warning_message ??
+          "割り当て可能な席がありません。手動で確認してください。";
+
+        return (
+          <button
+            key={reservation.id}
+            type="button"
+            onClick={() => setSelectedReservation(reservation)}
+            className="w-full rounded-2xl border border-red-200 bg-white p-4 text-left shadow-sm hover:ring-2 hover:ring-red-200"
+          >
+            <div className="text-sm font-bold text-red-700">
+              {reservation.start}　{reservation.persons}名　{route}
+            </div>
+
+            <div className="mt-1 text-lg font-black text-stone-900">
+              {reservation.title}
+            </div>
+
+            {reservation.courseNameSnapshot ? (
+              <div className="mt-1 text-sm font-bold text-stone-700">
+                コース：{reservation.courseNameSnapshot}
+              </div>
+            ) : null}
+
+            <div className="mt-2 rounded-xl bg-red-100 px-3 py-2 text-sm font-bold text-red-800">
+              {warning}
+            </div>
+
+            {reservation.notes ? (
+              <div className="mt-2 whitespace-pre-wrap rounded-xl bg-stone-50 px-3 py-2 text-sm font-semibold text-stone-700">
+                備考：{reservation.notes}
+              </div>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+)}
+
+
         <div className="overflow-x-auto rounded-3xl border border-stone-200 bg-white shadow-sm">
            <div className="grid min-w-[980px]"
   style={{
@@ -653,7 +736,8 @@ function openClosureModal() {
                 </div>
               ))}
 
-              {reservationsForDay.map((reservation) => {
+             {assignedReservations.map((reservation) => {
+
                 const startIndex = timeSlots.indexOf(reservation.start);
                 if (startIndex < 0) return null;
 
