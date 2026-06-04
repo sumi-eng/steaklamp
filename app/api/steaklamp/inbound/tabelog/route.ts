@@ -313,6 +313,7 @@ warning_message: warningMessage,
   warningMessage,
 });
 
+}
 
     const { data, error } = await supabaseAdmin
       .from("reservations")
