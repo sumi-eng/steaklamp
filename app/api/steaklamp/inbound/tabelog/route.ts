@@ -246,18 +246,21 @@ export async function POST(req: NextRequest) {
       seatLabel: parsed.seatLabel ?? "",
     });
 
-    if (!selectedSeat) {
-      return json({
-        ok: false,
-        reason: "seat_not_available",
-        parsed,
-      });
-    }
+    const assignmentStatus = selectedSeat ? "assigned" : "unassigned";
+
+const warningMessage = selectedSeat
+  ? null
+  : parsed.seatLabel?.includes("カウンター")
+    ? "食べログからの予約ですが、割り当て可能な席がありません。手動で席を確認してください。"
+    : "食べログからの予約ですが、テーブル席が満席です。カウンター変更可能か確認が必要です。";
 
     const payload = {
       store_id: store.id,
-      seat_id: selectedSeat.id,
+      seat_id: selectedSeat?.id ?? null,
+
       course_id: null,
+assignment_status: assignmentStatus,
+warning_message: warningMessage,
 
       name: parsed.name || "食べログ予約",
       phone: parsed.phone || null,
@@ -300,8 +303,16 @@ export async function POST(req: NextRequest) {
         return json({ ok: false, reason: "update_failed", error, parsed }, 500);
       }
 
-      return json({ ok: true, action: "updated", reservation: data, parsed });
-    }
+     return json({
+  ok: true,
+  action: "updated",
+  reservation: data,
+  parsed,
+  assignedSeatName: selectedSeat?.name ?? null,
+  assignmentStatus,
+  warningMessage,
+});
+
 
     const { data, error } = await supabaseAdmin
       .from("reservations")
@@ -314,7 +325,16 @@ export async function POST(req: NextRequest) {
       return json({ ok: false, reason: "insert_failed", error, parsed }, 500);
     }
 
-    return json({ ok: true, action: "created", reservation: data, parsed });
+   return json({
+  ok: true,
+  action: "created",
+  reservation: data,
+  parsed,
+  assignedSeatName: selectedSeat?.name ?? null,
+  assignmentStatus,
+  warningMessage,
+});
+
   } catch (e: any) {
     console.error("STEAKLAMP_TABELOG_FATAL =", e);
     return json({ ok: false, error: e?.message ?? String(e) }, 500);
