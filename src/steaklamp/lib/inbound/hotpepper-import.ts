@@ -331,14 +331,14 @@ if (!importableMailTypes.includes(String(parsed.mailType))) {
     excludeReservationId: existingRes.data?.id ?? null,
   });
 
-  if (!selectedSeat) {
-    return {
-      ok: false as const,
-      reason: "seat_not_available",
-      parsed,
-      counterOk,
-    };
-  }
+  const assignmentStatus = selectedSeat ? "assigned" : "unassigned";
+
+const warningMessage = selectedSeat
+  ? null
+  : counterOk
+    ? "ホットペッパーからの予約ですが、割り当て可能な席がありません。手動で席を確認してください。"
+    : "ホットペッパーからの予約ですが、テーブル席が満席です。カウンター変更可能か確認が必要です。";
+
 
   const noteLines = [
     "ホットペッパー予約",
@@ -351,7 +351,8 @@ if (!importableMailTypes.includes(String(parsed.mailType))) {
 
   const payload = {
     store_id: store.id,
-    seat_id: selectedSeat.id,
+    seat_id: selectedSeat?.id ?? null,
+
     course_id: null,
     name: parsed.name || "ホットペッパー予約",
     phone: null,
@@ -363,6 +364,9 @@ if (!importableMailTypes.includes(String(parsed.mailType))) {
     course_price_snapshot: course.coursePrice,
     counter_acceptable: counterOk,
     notes: noteLines.join("\n"),
+assignment_status: assignmentStatus,
+warning_message: warningMessage,
+
     status: "booked",
     source: "hotpepper",
     cancel_token: null,
@@ -398,7 +402,9 @@ if (!importableMailTypes.includes(String(parsed.mailType))) {
       action: "updated",
       reservation: updateRes.data,
       parsed,
-      assignedSeatName: selectedSeat.name,
+      assignedSeatName: selectedSeat?.name ?? null,
+assignmentStatus,
+warningMessage,
     };
   }
 
@@ -426,6 +432,9 @@ if (!importableMailTypes.includes(String(parsed.mailType))) {
     action: "created",
     reservation: insertRes.data,
     parsed,
-    assignedSeatName: selectedSeat.name,
+    assignedSeatName: selectedSeat?.name ?? null,
+assignmentStatus,
+warningMessage,
+
   };
 }
