@@ -8,6 +8,9 @@ type LineNotifyReservation = {
   courseName?: string | null;
   notes?: string | null;
   source?: string | null;
+assignmentStatus?: string | null;
+warningMessage?: string | null;
+
 };
 
 function formatJpDateTime(value?: string | null) {
@@ -40,17 +43,23 @@ export async function sendLineReservationNotice(
     return;
   }
 
- const isCancel = reservation.source === "キャンセル";
+const isCancel = reservation.source === "キャンセル";
+const needsAttention =
+  reservation.assignmentStatus && reservation.assignmentStatus !== "assigned";
 
 const text = [
   isCancel
     ? "【Lamp】予約がキャンセルされました"
-    : "【Lamp】新しい予約が入りました",
+    : needsAttention
+      ? "【要確認】SteakLamp 予約が入りました"
+      : "【Lamp】新しい予約が入りました",
   "",
   `日時：${formatJpDateTime(reservation.start_at)}`,
   `名前：${reservation.name ?? "未設定"} 様`,
   `人数：${reservation.persons ?? "-"}名`,
   `席：${reservation.seatName ?? "-"}`,
+  needsAttention ? "⚠ 席未割当・要対応" : null,
+  reservation.warningMessage ? `理由：${reservation.warningMessage}` : null,
   `コース：${reservation.courseName ?? "席のみ"}`,
   `電話：${reservation.phone ?? "-"}`,
   reservation.email ? `メール：${reservation.email}` : null,

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { parseTabelogReservationMail } from "@/steaklamp/lib/inbound/tabelog-parser";
+import { sendLineReservationNotice } from "@/steaklamp/lib/lineNotify";
+
 
 export const runtime = "nodejs";
 
@@ -302,6 +304,19 @@ warning_message: warningMessage,
         console.error("STEAKLAMP_TABELOG_UPDATE_ERROR =", error);
         return json({ ok: false, reason: "update_failed", error, parsed }, 500);
       }
+await sendLineReservationNotice({
+  name: parsed.name,
+  phone: parsed.phone,
+  email: null,
+  persons: parsed.persons,
+  start_at: startAt.toISOString(),
+  seatName: selectedSeat?.name ?? "未割当",
+  courseName: parsed.planName ?? "席のみ",
+  notes: buildNotes(parsed),
+  source: "食べログ",
+  assignmentStatus,
+  warningMessage,
+});
 
      return json({
   ok: true,
@@ -325,6 +340,20 @@ warning_message: warningMessage,
       console.error("STEAKLAMP_TABELOG_INSERT_ERROR =", error);
       return json({ ok: false, reason: "insert_failed", error, parsed }, 500);
     }
+
+await sendLineReservationNotice({
+  name: parsed.name,
+  phone: parsed.phone,
+  email: null,
+  persons: parsed.persons,
+  start_at: startAt.toISOString(),
+  seatName: selectedSeat?.name ?? "未割当",
+  courseName: parsed.planName ?? "席のみ",
+  notes: buildNotes(parsed),
+  source: "食べログ",
+  assignmentStatus,
+  warningMessage,
+});
 
    return json({
   ok: true,
