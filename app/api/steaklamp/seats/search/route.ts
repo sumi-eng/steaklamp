@@ -298,7 +298,7 @@ const isSixSeatGroup =
   seatName === "右6名席" ||
   seatName === "左6名席";
 
-if (persons >= 6 && isSixSeatGroup) return false;
+if (persons >= 7 && isSixSeatGroup) return false;
 
 
         const candidatePhysicalSeatIds = expandPhysicalSeatIds(String(seat.id), members, typedSeats)
