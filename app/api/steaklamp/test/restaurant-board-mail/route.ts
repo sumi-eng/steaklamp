@@ -51,12 +51,13 @@ export async function POST() {
 
     const resend = new Resend(apiKey);
 
-    const result = await resend.emails.send({
-      from: "hp-steak@phcoreer.resend.app",
-      to,
-      subject: "【食べログ】ネット予約通知",
-      text: buildRestaurantBoardTestMail(),
-    });
+   const result = await resend.emails.send({
+  from: "Steak Lamp <onboarding@resend.dev>",
+  to,
+  subject: "【食べログ】ネット予約通知",
+  text: buildRestaurantBoardTestMail(),
+});
+
 
     return json({
       ok: true,
