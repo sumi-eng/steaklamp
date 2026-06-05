@@ -52,7 +52,7 @@ export async function POST() {
     const resend = new Resend(apiKey);
 
    const result = await resend.emails.send({
-  from: "Steak Lamp <hp-steak@naturallife.jp>",
+  from: "Steak Lamp <sumi@naturallife.jp>",
   to,
   subject: "【食べログ】ネット予約通知",
   text: buildRestaurantBoardTestMail(),
