@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
+import { sendLineReservationNotice } from "@/steaklamp/lib/lineNotify";
 import { parseHotpepperReservationMail } from "./hotpepper-parser";
 
 type SeatRow = {
@@ -268,15 +269,28 @@ export async function importHotpepperReservationFromText(args: {
       .select("id, status")
       .single();
 
-    if (updateRes.error) throw updateRes.error;
+ if (updateRes.error) throw updateRes.error;
 
-    return {
-      ok: true as const,
-      skipped: false,
-      action: "cancelled",
-      reservation: updateRes.data,
-      parsed,
-    };
+await sendLineReservationNotice({
+  name: parsed.name,
+  phone: null,
+  email: null,
+  persons: parsed.persons,
+  start_at: buildStartAt(parsed.date, parsed.time).toISOString(),
+  seatName: null,
+  courseName: parsed.planName,
+  notes: parsed.requestText ?? null,
+  source: "キャンセル",
+});
+
+return {
+  ok: true as const,
+  skipped: false,
+  action: "cancelled",
+  reservation: updateRes.data,
+  parsed,
+};
+
   }
 
  const importableMailTypes = ["new", "request", "change", "modify", "updated", "unknown"];
@@ -395,6 +409,19 @@ warning_message: warningMessage,
         error: updateRes.error,
       };
     }
+await sendLineReservationNotice({
+  name: parsed.name,
+  phone: null,
+  email: null,
+  persons,
+  start_at: startAt.toISOString(),
+  seatName: selectedSeat?.name ?? "未割当",
+  courseName: course.courseName,
+  notes: noteLines.join("\n"),
+  source: "ホットペッパー",
+  assignmentStatus,
+  warningMessage,
+});
 
     return {
       ok: true as const,
@@ -425,6 +452,19 @@ warningMessage,
       error: insertRes.error,
     };
   }
+await sendLineReservationNotice({
+  name: parsed.name,
+  phone: null,
+  email: null,
+  persons,
+  start_at: startAt.toISOString(),
+  seatName: selectedSeat?.name ?? "未割当",
+  courseName: course.courseName,
+  notes: noteLines.join("\n"),
+  source: "ホットペッパー",
+  assignmentStatus,
+  warningMessage,
+});
 
   return {
     ok: true as const,
