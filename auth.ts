@@ -8,6 +8,7 @@ interface YahooJapanProfile {
   sub?: string;
   user_id?: string;
   name?: string;
+  nickname?: string;
   email?: string;
   picture?: string;
 }
@@ -29,11 +30,11 @@ function YahooJapan(): OAuthConfig<YahooJapanProfile> {
     token: "https://auth.login.yahoo.co.jp/yconnect/v2/token",
     userinfo: "https://userinfo.yahooapis.jp/yconnect/v2/attribute",
     checks: ["state"],
-    idToken: true,
+    idToken: false,
     profile(profile) {
       return {
         id: profile.sub ?? profile.user_id ?? "",
-        name: profile.name ?? null,
+        name: profile.name ?? profile.nickname ?? null,
         email: profile.email ?? null,
         image: profile.picture ?? null,
       };
