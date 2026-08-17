@@ -7,7 +7,6 @@ const CALLBACK_URL = "/steaklamp/reserve";
 const SNS_PROVIDERS: { id: string; label: string; className: string }[] = [
   { id: "line", label: "LINEでログイン", className: "bg-[#06C755] text-white hover:bg-[#05b34c]" },
   { id: "google", label: "Googleでログイン", className: "border border-stone-300 bg-white text-stone-800 hover:bg-stone-50" },
-  { id: "yahoojp", label: "Yahoo! JAPANでログイン", className: "bg-[#FF0033] text-white hover:bg-[#e6002e]" },
   { id: "facebook", label: "Facebookでログイン", className: "bg-[#1877F2] text-white hover:bg-[#1568d6]" },
 ];
 
