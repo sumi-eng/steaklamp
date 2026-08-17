@@ -3,26 +3,26 @@ import Facebook from "next-auth/providers/facebook";
 import Google from "next-auth/providers/google";
 import LINE from "next-auth/providers/line";
 
-// Yahoo! JAPAN には next-auth 組み込みプロバイダーがないため OAuth を手書きで定義する。
-// authorization/token/userinfo を明示するので discovery (.well-known) には依存しない。
+// Yahoo! JAPAN には next-auth 組み込みプロバイダーがないため OIDC を手書きで定義する。
+// userinfo エンドポイントは審査未承認のため使えず、IDトークンのclaimsから情報を取得する。
 const YahooJapan = {
   id: "yahoojp",
   name: "Yahoo! JAPAN",
-  type: "oauth" as const,
+  type: "oidc" as const,
+  issuer: "https://auth.login.yahoo.co.jp/yconnect/v2",
+  wellKnown: "https://auth.login.yahoo.co.jp/yconnect/v2/.well-known/openid-configuration",
+  clientId: process.env.YAHOOJP_CLIENT_ID,
+  clientSecret: process.env.YAHOOJP_CLIENT_SECRET,
   authorization: {
-    url: "https://auth.login.yahoo.co.jp/yconnect/v2/authorization",
     params: {
       scope: "openid profile email",
       response_type: "code",
     },
   },
-  token: "https://auth.login.yahoo.co.jp/yconnect/v2/token",
-  userinfo: "https://userinfo.yahooapis.jp/yconnect/v2/attribute",
-  clientId: process.env.YAHOOJP_CLIENT_ID,
-  clientSecret: process.env.YAHOOJP_CLIENT_SECRET,
   client: {
     token_endpoint_auth_method: "client_secret_basic",
   },
+  idToken: true,
   checks: ["state"] as ("state")[],
   profile(profile: Record<string, any>) {
     return {
