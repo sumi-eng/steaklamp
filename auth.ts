@@ -18,7 +18,8 @@ function YahooJapan(): OAuthConfig<YahooJapanProfile> {
   return {
     id: "yahoojp",
     name: "Yahoo! JAPAN",
-    type: "oauth",
+    type: "oidc",
+    issuer: "https://auth.login.yahoo.co.jp/yconnect/v2",
     clientId: process.env.YAHOOJP_CLIENT_ID,
     clientSecret: process.env.YAHOOJP_CLIENT_SECRET,
     authorization: {
@@ -27,7 +28,8 @@ function YahooJapan(): OAuthConfig<YahooJapanProfile> {
     },
     token: "https://auth.login.yahoo.co.jp/yconnect/v2/token",
     userinfo: "https://userinfo.yahooapis.jp/yconnect/v2/attribute",
-    checks: ["pkce", "state"],
+    checks: ["state"],
+    idToken: true,
     profile(profile) {
       return {
         id: profile.sub ?? profile.user_id ?? "",
