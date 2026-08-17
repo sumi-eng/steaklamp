@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
+import SnsLoginPanel from "@/components/steaklamp/SnsLoginPanel";
 
 type Plan = "seat_only" | "course_a" | "course_b" | "course_c";
 
@@ -144,19 +146,23 @@ const selectClass =
 
 export default function SteaklampReservePage() {
   const today = useMemo(() => todayJstDateString(), []);
+  const { status: sessionStatus } = useSession();
   const [plan, setPlan] = useState<Plan>("seat_only");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("18:00");
   const [persons, setPersons] = useState(2);
-  const [counterOk, setCounterOk] = useState(false);
 
   const [guestName, setGuestName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
 
+  const profileFetchedRef = useRef(false);
+
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [counterConfirmMessage, setCounterConfirmMessage] = useState<string | null>(null);
+  const [counterConfirmPending, setCounterConfirmPending] = useState(false);
   const [success, setSuccess] = useState<{
     reservationId: string;
     assignedSeatLabel?: string | null;
@@ -186,11 +192,51 @@ export default function SteaklampReservePage() {
     startOfMonth(parseYmd(today))
   );
 
+  function resetSearchState() {
+    setSuccess(null);
+    setErrorMessage(null);
+    setCounterConfirmMessage(null);
+    setCounterConfirmPending(false);
+  }
+
   useEffect(() => {
     if (!date || isBeforeDate(date, minDate)) {
       setDate(minDate);
     }
   }, [date, minDate]);
+
+  useEffect(() => {
+    if (sessionStatus === "unauthenticated") {
+      profileFetchedRef.current = false;
+      return;
+    }
+    if (sessionStatus !== "authenticated" || profileFetchedRef.current) return;
+    profileFetchedRef.current = true;
+
+    let cancelled = false;
+
+    async function applyProfile() {
+      try {
+        const res = await fetch("/api/steaklamp/profile", { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+
+        if (cancelled || !json.ok) return;
+
+        const p = json.profile ?? {};
+        setGuestName((prev) => (prev.trim() ? prev : p.name ?? prev));
+        setPhone((prev) => (prev.trim() ? prev : p.phone ?? prev));
+        setEmail((prev) => (prev.trim() ? prev : p.email ?? prev));
+      } catch {
+        // 自動入力に失敗しても手入力で予約できるため無視する
+      }
+    }
+
+    applyProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionStatus]);
 
   useEffect(() => {
     const base = date ? parseYmd(date) : parseYmd(minDate);
@@ -215,7 +261,7 @@ export default function SteaklampReservePage() {
           month: monthKey(visibleMonth),
           persons: String(persons),
           duration: String(duration),
-          counterOk: counterOk ? "1" : "0",
+          counterOk: "1",
         });
 
         const res = await fetch(`/api/steaklamp/calendar?${qs.toString()}`, {
@@ -243,7 +289,7 @@ export default function SteaklampReservePage() {
     return () => {
       cancelled = true;
     };
-  }, [visibleMonth, persons, counterOk]);
+  }, [visibleMonth, persons]);
 
   useEffect(() => {
     let cancelled = false;
@@ -319,6 +365,17 @@ export default function SteaklampReservePage() {
     return null;
   }
 
+  async function searchSeats(startAt: string, counterOk: boolean) {
+    const seatRes = await fetch("/api/steaklamp/seats/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ persons, startAt, duration, counterOk }),
+    });
+
+    const seatJson = await seatRes.json().catch(() => ({}));
+    return seatJson.ok ? ((seatJson.seats as SeatCandidate[]) ?? []) : [];
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErrorMessage(null);
@@ -327,6 +384,8 @@ export default function SteaklampReservePage() {
     const validationError = validateBeforeSubmit();
     if (validationError) {
       setErrorMessage(validationError);
+      setCounterConfirmPending(false);
+      setCounterConfirmMessage(null);
       return;
     }
 
@@ -334,19 +393,36 @@ export default function SteaklampReservePage() {
 
     try {
       const startAt = `${date}T${time}:00+09:00`;
+      const usingCounter = counterConfirmPending;
 
-      const seatRes = await fetch("/api/steaklamp/seats/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ persons, startAt, duration, counterOk }),
-      });
+      let candidates: SeatCandidate[];
 
-      const seatJson = await seatRes.json().catch(() => ({}));
-      const candidates = seatJson.ok ? (seatJson.seats as SeatCandidate[]) ?? [] : [];
+      if (!usingCounter) {
+        candidates = await searchSeats(startAt, false);
 
-      if (candidates.length === 0) {
-        setErrorMessage("申し訳ありません。この条件では空席がありません。人数または時間を変更してください。");
-        return;
+        if (candidates.length === 0) {
+          const counterCandidates = await searchSeats(startAt, true);
+
+          if (counterCandidates.length > 0) {
+            setCounterConfirmPending(true);
+            setCounterConfirmMessage(
+              "テーブル席は満席です。カウンター席なら予約できます。よろしければそのまま「予約を確定する」を押してください。"
+            );
+            return;
+          }
+
+          setErrorMessage("申し訳ありません。この条件では空席がありません。人数または時間を変更してください。");
+          return;
+        }
+      } else {
+        candidates = await searchSeats(startAt, true);
+
+        if (candidates.length === 0) {
+          setCounterConfirmPending(false);
+          setCounterConfirmMessage(null);
+          setErrorMessage("申し訳ありません。この条件では空席がありません。人数または時間を変更してください。");
+          return;
+        }
       }
 
       const selectedSeat = candidates[0];
@@ -362,7 +438,7 @@ export default function SteaklampReservePage() {
           startAt,
           duration,
           notes: notes.trim() || null,
-          counterOk,
+          counterOk: usingCounter,
           seatId: selectedSeat.id,
           course_id: null,
           course_name_snapshot: PLANS[plan].label,
@@ -377,17 +453,30 @@ export default function SteaklampReservePage() {
         return;
       }
 
+      if (sessionStatus === "authenticated") {
+        fetch("/api/steaklamp/profile", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: guestName.trim(),
+            phone: phone.trim(),
+            email: email.trim() || null,
+          }),
+        }).catch(() => {});
+      }
+
       setSuccess({
         reservationId: json.reservation?.id ?? "",
         assignedSeatLabel: selectedSeat.name,
       });
 
+      setCounterConfirmPending(false);
+      setCounterConfirmMessage(null);
       setGuestName("");
       setPhone("");
       setEmail("");
       setNotes("");
       setPersons(2);
-      setCounterOk(false);
       setDate(minDate);
       setTime("18:00");
     } catch (err: any) {
@@ -476,6 +565,7 @@ export default function SteaklampReservePage() {
   </a>
 </div>
 
+            <SnsLoginPanel />
 
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="sm:col-span-2">
@@ -495,8 +585,7 @@ export default function SteaklampReservePage() {
                         checked={plan === key}
                         onChange={() => {
                           setPlan(key);
-                          setSuccess(null);
-                          setErrorMessage(null);
+                          resetSearchState();
                         }}
                       />
                       <span className="font-bold text-stone-900">{PLANS[key].label}</span>
@@ -577,8 +666,7 @@ export default function SteaklampReservePage() {
                         onClick={() => {
                           if (disabled) return;
                           setDate(cell.ymd);
-                          setErrorMessage(null);
-                          setSuccess(null);
+                          resetSearchState();
                         }}
                         disabled={disabled}
                         className={[
@@ -659,7 +747,10 @@ export default function SteaklampReservePage() {
                 </label>
                 <select
                   value={time}
-                  onChange={(e) => setTime(e.target.value)}
+                  onChange={(e) => {
+                    setTime(e.target.value);
+                    resetSearchState();
+                  }}
                   className={selectClass}
                 >
                   {timeOptions.map((t) => (
@@ -678,8 +769,7 @@ export default function SteaklampReservePage() {
                   value={persons}
                   onChange={(e) => {
                     setPersons(Number(e.target.value));
-                    setSuccess(null);
-                    setErrorMessage(null);
+                    resetSearchState();
                   }}
                   className={selectClass}
                 >
@@ -692,24 +782,6 @@ export default function SteaklampReservePage() {
                     );
                   })}
                 </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-bold text-stone-900">
-                  お席の希望
-                </label>
-                <label className="inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-300 bg-white px-4 text-stone-900">
-                  <input
-                    type="checkbox"
-                    checked={counterOk}
-                    onChange={(e) => {
-                      setCounterOk(e.target.checked);
-                      setSuccess(null);
-                      setErrorMessage(null);
-                    }}
-                  />
-                  カウンター席でも可
-                </label>
               </div>
 
               <div>
@@ -766,6 +838,12 @@ export default function SteaklampReservePage() {
                 />
               </div>
             </div>
+
+            {counterConfirmMessage ? (
+              <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                {counterConfirmMessage}
+              </div>
+            ) : null}
 
             {errorMessage ? (
               <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
