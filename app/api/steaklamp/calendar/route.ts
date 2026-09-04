@@ -99,10 +99,27 @@ const todayKey = todayJstDateKey();
       );
     }
 
-    const { data: businessHours, error: businessHoursError } = await supabaseAdmin
-      .from("business_hours")
-      .select("*")
-      .eq("store_id", store.id);
+    const from = `${formatDateKey(monthStart)}T00:00:00+09:00`;
+    const to = `${formatDateKey(monthEnd)}T23:59:59+09:00`;
+
+    const [
+      { data: businessHours, error: businessHoursError },
+      { data: specialClosures },
+      { data: seats, error: seatsError },
+      { data: seatMembers, error: seatMembersError },
+      { data: reservations, error: reservationsError },
+    ] = await Promise.all([
+      supabaseAdmin.from("business_hours").select("*").eq("store_id", store.id),
+      supabaseAdmin.from("special_closures").select("*").eq("store_id", store.id),
+      supabaseAdmin.from("seats").select("*").eq("store_id", store.id),
+      supabaseAdmin.from("seat_members").select("group_seat_id, member_seat_id"),
+      supabaseAdmin
+        .from("reservations")
+        .select("*")
+        .eq("store_id", store.id)
+        .gte("start_at", from)
+        .lte("start_at", to),
+    ]);
 
     if (businessHoursError) {
       return json(
@@ -115,26 +132,12 @@ const todayKey = todayJstDateKey();
       );
     }
 
-    const { data: specialClosures } = await supabaseAdmin
-      .from("special_closures")
-      .select("*")
-      .eq("store_id", store.id);
-
-    const { data: seats, error: seatsError } = await supabaseAdmin
-      .from("seats")
-      .select("*")
-      .eq("store_id", store.id);
-
     if (seatsError) {
       return json(
         { ok: false, error: "seats_load_failed", detail: seatsError.message },
         500
       );
     }
-
-    const { data: seatMembers, error: seatMembersError } = await supabaseAdmin
-      .from("seat_members")
-      .select("group_seat_id, member_seat_id");
 
     if (seatMembersError) {
       return json(
@@ -146,16 +149,6 @@ const todayKey = todayJstDateKey();
         500
       );
     }
-
-    const from = `${formatDateKey(monthStart)}T00:00:00+09:00`;
-    const to = `${formatDateKey(monthEnd)}T23:59:59+09:00`;
-
-    const { data: reservations, error: reservationsError } = await supabaseAdmin
-      .from("reservations")
-      .select("*")
-      .eq("store_id", store.id)
-      .gte("start_at", from)
-      .lte("start_at", to);
 
     if (reservationsError) {
       return json(
@@ -186,6 +179,26 @@ const todayKey = todayJstDateKey();
       group_seat_id: string;
       member_seat_id: string;
     }>;
+
+    const memberIdsByGroup = new Map<string, string[]>();
+    for (const m of members) {
+      const groupId = String(m.group_seat_id);
+      if (!memberIdsByGroup.has(groupId)) memberIdsByGroup.set(groupId, []);
+      memberIdsByGroup.get(groupId)!.push(String(m.member_seat_id));
+    }
+
+    const activeReservationsByDate = new Map<string, any[]>();
+    for (const r of reservations ?? []) {
+      if (!r.start_at) continue;
+      if (["cancelled", "finished", "no_show"].includes(String(r.status))) {
+        continue;
+      }
+      const rDate = formatDateKey(new Date(r.start_at));
+      if (!activeReservationsByDate.has(rDate)) {
+        activeReservationsByDate.set(rDate, []);
+      }
+      activeReservationsByDate.get(rDate)!.push(r);
+    }
 
     const days: Record<
       string,
@@ -222,15 +235,8 @@ if (dateKey < todayKey) {
         continue;
       }
 
-      const reservationCount = (reservations ?? []).filter((r: any) => {
-        if (!r.start_at) return false;
-        if (["cancelled", "finished", "no_show"].includes(String(r.status))) {
-          return false;
-        }
-
-        const rDate = formatDateKey(new Date(r.start_at));
-        return rDate === dateKey;
-      }).length;
+      const dayReservations = activeReservationsByDate.get(dateKey) ?? [];
+      const reservationCount = dayReservations.length;
 
       const reservableTimes = buildReservableTimes(dateKey);
 
@@ -242,11 +248,8 @@ if (dateKey < todayKey) {
 
         const conflictSeatIds = new Set<string>();
 
-        for (const r of reservations ?? []) {
-          if (!r.seat_id || !r.start_at) continue;
-          if (["cancelled", "finished", "no_show"].includes(String(r.status))) {
-            continue;
-          }
+        for (const r of dayReservations) {
+          if (!r.seat_id) continue;
 
           const rStart = new Date(r.start_at);
           const rEnd = addMinutes(rStart, Number(r.duration_minutes ?? 120));
@@ -269,9 +272,7 @@ if (dateKey < todayKey) {
 
           if (conflictSeatIds.has(String(seat.id))) return false;
 
-          const memberIds = members
-            .filter((m) => String(m.group_seat_id) === String(seat.id))
-            .map((m) => String(m.member_seat_id));
+          const memberIds = memberIdsByGroup.get(String(seat.id)) ?? [];
 
           for (const memberId of memberIds) {
             if (conflictSeatIds.has(memberId)) return false;
@@ -300,14 +301,23 @@ if (dateKey < todayKey) {
       };
     }
 
-    return json({
-      ok: true,
-      month,
-      persons,
-      duration,
-      counterOk,
-      days,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        month,
+        persons,
+        duration,
+        counterOk,
+        days,
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control":
+            "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+        },
+      }
+    );
   } catch (e) {
     return json(
       {
