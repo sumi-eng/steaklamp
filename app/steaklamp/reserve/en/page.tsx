@@ -1,0 +1,980 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
+import SnsLoginPanelEn from "@/components/steaklamp/SnsLoginPanelEn";
+
+// NOTE (English duplicate of app/steaklamp/reserve/page.tsx):
+// This page reuses the same backend APIs as the Japanese reservation page,
+// unchanged. The backend (app/api/steaklamp/reservations/create/route.ts)
+// keys its 3-day/same-day deadline logic off the exact Japanese course name
+// ("Cコース" etc.), and confirmation emails to the guest/store are rendered
+// in Japanese only. Per project decision, those stay Japanese for now — this
+// page sends the Japanese "apiLabel" as course_name_snapshot to the backend
+// while displaying the English "label" to the guest, and translates the
+// handful of known Japanese error strings the API can return back to English
+// for display (see API_ERROR_MESSAGES below). If the API ever returns an
+// unmapped Japanese string, a generic English fallback is shown instead of
+// leaking raw Japanese/error codes to an English-speaking guest.
+
+type Plan = "seat_only" | "course_a" | "course_b" | "course_c";
+
+type CalendarStatus = "available" | "few" | "full" | "closed";
+
+type CalendarDayInfo = {
+  status: CalendarStatus;
+  count: number;
+  isClosed: boolean;
+};
+
+type CalendarResponse = {
+  ok: boolean;
+  days: Record<string, CalendarDayInfo>;
+};
+
+type SeatCandidate = {
+  id: string;
+  name: string;
+  capacityLabel: string;
+  physicalSeats: string;
+};
+
+const SHOP_PHONE = "088-661-1536";
+const SHOP_TEL_LINK = `tel:${SHOP_PHONE.replace(/-/g, "")}`;
+
+// `apiLabel` is sent to the backend as course_name_snapshot and must stay
+// the exact Japanese string the backend/emails expect. `label`/`help` are
+// what the English-speaking guest sees.
+const PLANS: Record<
+  Plan,
+  { label: string; apiLabel: string; price: number | null; help: string }
+> = {
+  seat_only: {
+    label: "Seat only",
+    apiLabel: "席のみ",
+    price: null,
+    help: "Accepted until 3:00 PM on the day of your visit. Please order after you arrive.",
+  },
+  course_a: {
+    label: "Course A",
+    apiLabel: "Aコース",
+    price: 6600,
+    help: "Accepted until 3:00 PM on the day of your visit. ¥6,600 (tax included)",
+  },
+  course_b: {
+    label: "Course B",
+    apiLabel: "Bコース",
+    price: 8800,
+    help: "Accepted until 3:00 PM on the day of your visit. ¥8,800 (tax included)",
+  },
+  course_c: {
+    label: "Course C",
+    apiLabel: "Cコース",
+    price: 11000,
+    help: "Accepted up to 3 days in advance. ¥11,000 (tax included)",
+  },
+};
+
+// Known Japanese strings the backend API can return, mapped to English.
+// Emails and any string not listed here fall back to a generic message
+// rather than showing raw Japanese or an internal error code.
+const API_ERROR_MESSAGES: Record<string, string> = {
+  "電話番号は10桁または11桁で入力してください":
+    "Please enter a phone number with 10 or 11 digits.",
+  "過去の日時には予約できません": "You can't book a time in the past.",
+  "Cコースは3日前までの受付です":
+    "Course C must be booked at least 3 days in advance.",
+  "席のみ・Aコース・Bコースは当日15時までの受付です":
+    "Seat-only, Course A, and Course B bookings must be made by 3:00 PM on the day of your visit.",
+  "この日は休業日のため予約できません":
+    "We're closed on this date, so it can't be booked.",
+  "この席はすでに予約されています":
+    "That seat has just been booked. Please try a different time.",
+};
+
+const GENERIC_API_ERROR =
+  "We couldn't complete your reservation. Please try again, or call us.";
+
+function translateApiMessage(raw?: string | null): string {
+  if (!raw) return GENERIC_API_ERROR;
+  return API_ERROR_MESSAGES[raw] ?? GENERIC_API_ERROR;
+}
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function todayJstDateString() {
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().slice(0, 10);
+}
+
+function addDays(dateStr: string, days: number) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function parseYmd(dateStr: string) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
+function formatYmd(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function buildCalendarDays(monthDate: Date) {
+  const first = startOfMonth(monthDate);
+  const firstWeekday = first.getDay();
+  const start = new Date(first);
+  start.setDate(first.getDate() - firstWeekday);
+
+  return Array.from({ length: 42 }).map((_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return {
+      date: d,
+      ymd: formatYmd(d),
+      day: d.getDate(),
+      inMonth: d.getMonth() === monthDate.getMonth(),
+    };
+  });
+}
+
+function monthLabel(date: Date) {
+  return `${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function isBeforeDate(a: string, b: string) {
+  return a < b;
+}
+
+function isAfterDate(a: string, b: string) {
+  return a > b;
+}
+
+function isSameDate(a: string, b: string) {
+  return a === b;
+}
+
+function isValidEmail(v: string) {
+  if (!v) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+function buildTimes() {
+  const times: string[] = [];
+  for (let h = 18; h <= 20; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      if (h === 20 && m > 0) continue;
+      times.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    }
+  }
+  return times;
+}
+
+const inputClass =
+  "h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 outline-none focus:border-amber-500";
+
+const selectClass =
+  "h-12 w-full rounded-2xl border border-stone-300 bg-white px-4 text-stone-900 outline-none focus:border-amber-500 disabled:bg-stone-100 disabled:text-stone-500";
+
+export default function SteaklampReservePageEn() {
+  const today = useMemo(() => todayJstDateString(), []);
+  const { status: sessionStatus } = useSession();
+  const [plan, setPlan] = useState<Plan>("seat_only");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("18:00");
+  const [persons, setPersons] = useState(2);
+
+  const [guestName, setGuestName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const profileFetchedRef = useRef(false);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [counterConfirmMessage, setCounterConfirmMessage] = useState<string | null>(null);
+  const [counterConfirmPending, setCounterConfirmPending] = useState(false);
+  const [success, setSuccess] = useState<{
+    reservationId: string;
+    assignedSeatLabel?: string | null;
+  } | null>(null);
+
+  const [calendarMap, setCalendarMap] = useState<Record<string, CalendarDayInfo>>({});
+  const [closureMap, setClosureMap] = useState<Record<string, string>>({});
+  const [calendarLoading, setCalendarLoading] = useState(false);
+
+  const duration = 120;
+  const allTimes = useMemo(() => buildTimes(), []);
+  const timeOptions = allTimes;
+
+  const minDate = useMemo(() => {
+    if (plan === "course_c") return addDays(today, 3);
+    return addDays(today, 1);
+  }, [plan, today]);
+
+  const maxDate = useMemo(() => {
+    const base = parseYmd(today);
+    const end = new Date(base.getFullYear(), base.getMonth() + 3, 0);
+    return formatYmd(end);
+  }, [today]);
+
+  const [visibleMonth, setVisibleMonth] = useState<Date>(() =>
+    startOfMonth(parseYmd(today))
+  );
+
+  function resetSearchState() {
+    setSuccess(null);
+    setErrorMessage(null);
+    setCounterConfirmMessage(null);
+    setCounterConfirmPending(false);
+  }
+
+  useEffect(() => {
+    if (!date || isBeforeDate(date, minDate)) {
+      setDate(minDate);
+    }
+  }, [date, minDate]);
+
+  useEffect(() => {
+    if (sessionStatus === "unauthenticated") {
+      profileFetchedRef.current = false;
+      return;
+    }
+    if (sessionStatus !== "authenticated" || profileFetchedRef.current) return;
+    profileFetchedRef.current = true;
+
+    let cancelled = false;
+
+    async function applyProfile() {
+      try {
+        const res = await fetch("/api/steaklamp/profile", { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+
+        if (cancelled || !json.ok) return;
+
+        const p = json.profile ?? {};
+        setGuestName((prev) => (prev.trim() ? prev : p.name ?? prev));
+        setPhone((prev) => (prev.trim() ? prev : p.phone ?? prev));
+        setEmail((prev) => (prev.trim() ? prev : p.email ?? prev));
+      } catch {
+        // Autofill failing is not fatal; the guest can still fill the form manually.
+      }
+    }
+
+    applyProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionStatus]);
+
+  useEffect(() => {
+    const base = date ? parseYmd(date) : parseYmd(minDate);
+    setVisibleMonth(startOfMonth(base));
+  }, [date, minDate]);
+
+  const calendarDays = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
+  const minMonth = useMemo(() => startOfMonth(parseYmd(minDate)), [minDate]);
+  const maxMonth = useMemo(() => startOfMonth(parseYmd(maxDate)), [maxDate]);
+
+  const canPrevMonth = visibleMonth > minMonth;
+  const canNextMonth = visibleMonth < maxMonth;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchCalendar() {
+      setCalendarLoading(true);
+
+      try {
+        const qs = new URLSearchParams({
+          month: monthKey(visibleMonth),
+          persons: String(persons),
+          duration: String(duration),
+          counterOk: "1",
+        });
+
+        const res = await fetch(`/api/steaklamp/calendar?${qs.toString()}`, {
+          cache: "no-store",
+        });
+
+        const json = (await res.json().catch(() => ({}))) as CalendarResponse;
+
+        if (!cancelled) {
+          if (res.ok && json.ok) {
+            setCalendarMap(json.days ?? {});
+          } else {
+            setCalendarMap({});
+          }
+        }
+      } catch {
+        if (!cancelled) setCalendarMap({});
+      } finally {
+        if (!cancelled) setCalendarLoading(false);
+      }
+    }
+
+    fetchCalendar();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleMonth, persons]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchClosures() {
+      try {
+        const res = await fetch("/api/steaklamp/closures", {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+
+        if (cancelled) return;
+
+        if (json.ok) {
+          const next: Record<string, string> = {};
+          for (const c of json.items ?? []) {
+            next[String(c.closed_on)] = String(c.reason ?? "臨時休業");
+          }
+          setClosureMap(next);
+        } else {
+          setClosureMap({});
+        }
+      } catch {
+        if (!cancelled) setClosureMap({});
+      }
+    }
+
+    fetchClosures();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function getCalendarStatus(
+    ymd: string
+  ): "available" | "few" | "full" | "closed" | "selected" {
+    const item = calendarMap[ymd];
+
+    if (!item) {
+      if (isBeforeDate(ymd, minDate)) return "closed";
+      if (isAfterDate(ymd, maxDate)) return "closed";
+      if (date && isSameDate(ymd, date)) return "selected";
+      return "closed";
+    }
+
+    if (date && isSameDate(ymd, date) && item.status !== "closed") {
+      return "selected";
+    }
+
+    return item.status;
+  }
+
+  function validateBeforeSubmit() {
+    if (!guestName.trim()) return "Please enter your name.";
+    if (!phone.trim()) return "Please enter your phone number.";
+    if (!date) return "Please select a date.";
+    if (!time) return "Please select a time.";
+
+    const now = new Date();
+    const selected = new Date(`${date}T${time}:00+09:00`);
+
+    if (selected < now) {
+      return "You can't select a time in the past.";
+    }
+
+    if (!Number.isFinite(persons) || persons <= 0) return "Please check the number of guests.";
+    if (!isValidEmail(email.trim())) return "Please check the format of your email address.";
+    if (persons >= 13) return "For parties of 13 or more, please call us to book.";
+    if (date < minDate) return "The booking deadline for this date has passed.";
+    if (date > maxDate) return "This date is outside the bookable range.";
+
+    return null;
+  }
+
+  async function searchSeats(startAt: string, counterOk: boolean) {
+    const seatRes = await fetch("/api/steaklamp/seats/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ persons, startAt, duration, counterOk }),
+    });
+
+    const seatJson = await seatRes.json().catch(() => ({}));
+    return seatJson.ok ? ((seatJson.seats as SeatCandidate[]) ?? []) : [];
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccess(null);
+
+    const validationError = validateBeforeSubmit();
+    if (validationError) {
+      setErrorMessage(validationError);
+      setCounterConfirmPending(false);
+      setCounterConfirmMessage(null);
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const startAt = `${date}T${time}:00+09:00`;
+      const usingCounter = counterConfirmPending;
+
+      let candidates: SeatCandidate[];
+
+      if (!usingCounter) {
+        candidates = await searchSeats(startAt, false);
+
+        if (candidates.length === 0) {
+          const counterCandidates = await searchSeats(startAt, true);
+
+          if (counterCandidates.length > 0) {
+            setCounterConfirmPending(true);
+            setCounterConfirmMessage(
+              "Table seats are fully booked, but a counter seat is available. If that's okay, press “Confirm Reservation” again to proceed."
+            );
+            return;
+          }
+
+          setErrorMessage(
+            "Sorry, no seats are available for these conditions. Please try a different number of guests or time."
+          );
+          return;
+        }
+      } else {
+        candidates = await searchSeats(startAt, true);
+
+        if (candidates.length === 0) {
+          setCounterConfirmPending(false);
+          setCounterConfirmMessage(null);
+          setErrorMessage(
+            "Sorry, no seats are available for these conditions. Please try a different number of guests or time."
+          );
+          return;
+        }
+      }
+
+      const selectedSeat = candidates[0];
+
+      const res = await fetch("/api/steaklamp/reservations/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: guestName.trim(),
+          phone: phone.trim(),
+          email: email.trim() || null,
+          persons,
+          startAt,
+          duration,
+          notes: notes.trim() || null,
+          counterOk: usingCounter,
+          seatId: selectedSeat.id,
+          course_id: null,
+          // Sent in Japanese on purpose: the backend's deadline logic and
+          // confirmation emails key off this exact string. See note at top
+          // of file.
+          course_name_snapshot: PLANS[plan].apiLabel,
+          course_price_snapshot: PLANS[plan].price,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok || !json.ok) {
+        setErrorMessage(translateApiMessage(json.detail || json.error));
+        return;
+      }
+
+      if (sessionStatus === "authenticated") {
+        fetch("/api/steaklamp/profile", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: guestName.trim(),
+            phone: phone.trim(),
+            email: email.trim() || null,
+          }),
+        }).catch(() => {});
+      }
+
+      setSuccess({
+        reservationId: json.reservation?.id ?? "",
+        assignedSeatLabel: selectedSeat.name,
+      });
+
+      setCounterConfirmPending(false);
+      setCounterConfirmMessage(null);
+      setGuestName("");
+      setPhone("");
+      setEmail("");
+      setNotes("");
+      setPersons(2);
+      setDate(minDate);
+      setTime("18:00");
+    } catch (err: any) {
+      setErrorMessage(err?.message ?? "A connection error occurred. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-stone-50 text-stone-900 [color-scheme:light]">
+<style jsx global>{`
+  input,
+  select,
+  textarea,
+  button {
+    color-scheme: light;
+  }
+
+  input,
+  select,
+  textarea {
+    color: #1c1917 !important;
+    background-color: #ffffff !important;
+    -webkit-text-fill-color: #1c1917 !important;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #a8a29e !important;
+    opacity: 0.55 !important;
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    color: #44403c !important;
+    background-color: #fafaf9 !important;
+    -webkit-text-fill-color: #44403c !important;
+    opacity: 1 !important;
+  }
+ button:disabled {
+    color: #57534e !important;
+    -webkit-text-fill-color: #57534e !important;
+    opacity: 1 !important;
+  }
+
+`}
+</style>
+
+      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="mb-6 sm:mb-8">
+          <div className="text-3xl font-extrabold tracking-tight text-stone-900 sm:text-4xl">
+            Passion for Grilling Lamp
+          </div>
+          <div className="mt-2 text-sm text-stone-600 sm:text-base">Online Reservation</div>
+        </div>
+
+        <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white text-stone-900 shadow-sm">
+          <div className="border-b border-stone-100 px-5 py-5 sm:px-8 sm:py-6">
+            <div className="text-xl font-bold text-stone-900 sm:text-2xl">
+              Reservation Form
+            </div>
+            <div className="mt-2 text-sm text-stone-600">{PLANS[plan].help}</div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="px-5 py-6 sm:px-8 sm:py-8">
+            <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-stone-700">
+              <div className="font-bold text-stone-900">Please note before booking</div>
+              <ul className="mt-2 space-y-1">
+                <li>・Business hours are 6:00 PM–10:00 PM.</li>
+                <li>・Online bookings are for a 6:00–8:00 PM start, 120-minute seating.</li>
+                <li>・We are closed on Wednesdays.</li>
+                <li>・Course C must be booked at least 3 days in advance.</li>
+                <li>・Course A/B and seat-only bookings must be made by 3:00 PM on the day of your visit.</li>
+              </ul>
+            </div>
+
+<div className="mb-6 flex justify-center">
+  <a
+    href={SHOP_TEL_LINK}
+    className="inline-flex h-12 items-center justify-center rounded-2xl bg-amber-500 px-6 font-extrabold text-stone-900 shadow-sm transition hover:bg-amber-400"
+
+  >
+    For same-day bookings after 3 PM, please call us
+  </a>
+</div>
+
+            <SnsLoginPanelEn />
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  Plan
+                </label>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  {(Object.keys(PLANS) as Plan[]).map((key) => (
+                    <label
+                      key={key}
+                      className="cursor-pointer rounded-2xl border border-stone-200 bg-white p-4 text-stone-900 hover:bg-stone-50"
+                    >
+                      <input
+                        type="radio"
+                        name="plan"
+                        className="mr-2"
+                        checked={plan === key}
+                        onChange={() => {
+                          setPlan(key);
+                          resetSearchState();
+                        }}
+                      />
+                      <span className="font-bold text-stone-900">{PLANS[key].label}</span>
+                      <div className="mt-1 text-xs text-stone-600">{PLANS[key].help}</div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 -mx-1 rounded-3xl border border-stone-200 bg-white p-3 text-stone-900 sm:mx-0 sm:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    disabled={!canPrevMonth}
+                    onClick={() =>
+                      setVisibleMonth((m) => {
+                        const next = addMonths(m, -1);
+                        return next < minMonth ? m : next;
+                      })
+                    }
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    ←
+                  </button>
+
+                  <div className="text-lg font-bold text-stone-900">
+                    {monthLabel(visibleMonth)}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={!canNextMonth}
+                    onClick={() =>
+                      setVisibleMonth((m) => {
+                        const next = addMonths(m, 1);
+                        return next > maxMonth ? m : next;
+                      })
+                    }
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    →
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[13px] font-bold text-stone-500 sm:text-sm">
+                  {WEEKDAY_LABELS.map((wd, i) => (
+                    <div
+                      key={wd}
+                      className={
+                        i === 0
+                          ? "py-2 text-rose-500"
+                          : i === 6
+                          ? "py-2 text-blue-500"
+                          : "py-2"
+                      }
+                    >
+                      {wd}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 gap-2">
+                  {calendarDays.map((cell) => {
+                    const status = getCalendarStatus(cell.ymd);
+                    const isSpecialClosed = Boolean(closureMap[cell.ymd]);
+                    const disabled =
+                      isSpecialClosed || status === "closed" || status === "full";
+                    const selected = !isSpecialClosed && status === "selected";
+
+                    let mark = "×";
+
+                    if (isSpecialClosed) {
+                      mark = "ー";
+                    } else {
+                      if (status === "available" || status === "selected") mark = "◯";
+                      if (status === "few") mark = "△";
+                      if (status === "full") mark = "×";
+                      if (status === "closed") mark = "ー";
+                    }
+
+                    return (
+                      <button
+                        key={cell.ymd}
+                        type="button"
+                        onClick={() => {
+                          if (disabled) return;
+                          setDate(cell.ymd);
+                          resetSearchState();
+                        }}
+                        disabled={disabled}
+                        className={[
+                          "flex min-h-[82px] flex-col items-center justify-between rounded-[22px] border px-1 py-2 text-center transition sm:min-h-[92px] sm:px-2 sm:py-3",
+                          cell.inMonth
+                            ? "border-stone-200 bg-white"
+                            : "border-stone-100 bg-stone-50 text-stone-300",
+                          disabled
+                            ? "cursor-not-allowed opacity-60"
+                            : "hover:border-amber-300 hover:bg-amber-50",
+                          selected
+                            ? "border-amber-500 bg-amber-500 shadow-sm ring-2 ring-amber-200"
+                            : "",
+                        ].join(" ")}
+                      >
+                        <div
+                          className={[
+                            "text-[15px] font-extrabold leading-none sm:text-sm",
+                            selected
+                              ? "text-black"
+                              : cell.date.getDay() === 0
+                              ? "text-rose-500"
+                              : cell.date.getDay() === 6
+                              ? "text-blue-500"
+                              : "text-stone-800",
+                          ].join(" ")}
+                        >
+                          {cell.day}
+                        </div>
+
+                        <div
+                          className={[
+                            "mt-1 text-[22px] font-bold leading-none sm:text-xl",
+                            selected
+                              ? "text-white"
+                              : isSpecialClosed
+                              ? "text-red-500"
+                              : status === "available"
+                              ? "text-emerald-600"
+                              : status === "few"
+                              ? "text-amber-600"
+                              : status === "full"
+                              ? "text-red-500"
+                              : "text-stone-400",
+                          ].join(" ")}
+                        >
+                          {mark}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-4 text-xs text-stone-500">
+                  <div className="text-emerald-600">○ Available</div>
+                  <div className="text-amber-600">△ Few seats left</div>
+                  <div className="text-red-500">× Full</div>
+                  <div>ー Not accepting bookings</div>
+                  {calendarLoading ? <div>Checking availability...</div> : null}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  Date
+                </label>
+                <input
+                  type="text"
+                  value={date}
+                  readOnly
+                  className="h-12 w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 text-stone-900 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  Time
+                </label>
+                <select
+                  value={time}
+                  onChange={(e) => {
+                    setTime(e.target.value);
+                    resetSearchState();
+                  }}
+                  className={selectClass}
+                >
+                  {timeOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  Number of Guests
+                </label>
+                <select
+                  value={persons}
+                  onChange={(e) => {
+                    setPersons(Number(e.target.value));
+                    resetSearchState();
+                  }}
+                  className={selectClass}
+                >
+                  {Array.from({ length: 12 }).map((_, i) => {
+                    const n = i + 1;
+                    return (
+                      <option key={n} value={n}>
+                        {n} {n === 1 ? "guest" : "guests"}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  className={inputClass}
+                  placeholder="John Smith"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className={inputClass}
+                  placeholder="09012345678"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={inputClass}
+                  placeholder="example@example.com"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="mb-2 block text-sm font-bold text-stone-900">
+                  Notes
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none focus:border-amber-500"
+
+
+                  placeholder="Allergies, special requests, etc."
+                />
+              </div>
+            </div>
+
+            {counterConfirmMessage ? (
+              <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                {counterConfirmMessage}
+              </div>
+            ) : null}
+
+            {errorMessage ? (
+              <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
+                {errorMessage}
+              </div>
+            ) : null}
+
+            {success ? (
+              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
+                <div className="font-bold">Your reservation has been received.</div>
+                <div className="mt-2">
+                  Reservation ID: <span className="font-bold">{success.reservationId}</span>
+                </div>
+                {success.assignedSeatLabel ? (
+                  <div className="mt-1">Your seat: {success.assignedSeatLabel}</div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-6">
+              {success ? (
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                  <a
+                    href="/steaklamp/reserve/en"
+                    className="inline-flex h-12 items-center justify-center rounded-2xl bg-emerald-500 px-6 font-extrabold text-white shadow-sm hover:bg-emerald-400"
+                  >
+                    Make another reservation
+                  </a>
+                </div>
+              ) : (
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+                  <a
+                    href={SHOP_TEL_LINK}
+                   className="inline-flex h-12 items-center justify-center rounded-2xl bg-amber-500 px-6 font-extrabold text-stone-900 shadow-sm transition hover:bg-amber-400"
+
+
+                  >
+                    For same-day bookings after 3 PM, please call us
+                  </a>
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="inline-flex h-12 items-center justify-center rounded-2xl bg-amber-500 px-6 font-extrabold text-stone-900 shadow-sm hover:bg-amber-400 disabled:bg-stone-300 disabled:text-stone-500"
+                  >
+                    {submitting ? "Submitting..." : "Confirm Reservation"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
