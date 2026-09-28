@@ -116,7 +116,7 @@ function inferCounterOk(parsed: {
   return text.includes("カウンター");
 }
 
-async function findSeatCandidate(args: {
+export async function findSeatCandidate(args: {
   storeId: string;
   persons: number;
   startAt: Date;
