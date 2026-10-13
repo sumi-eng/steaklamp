@@ -130,3 +130,28 @@ describe("席を割り当てられなかった理由", () => {
     );
   });
 });
+
+describe("席種(カウンター)の指定", () => {
+  it("カウンター指定の2名は、先頭のテーブル席ではなくカウンター席(C-12)に割り当てる", () => {
+    const r = choose({ persons: 2, counterOk: true, seatKind: "counter" });
+    expect(r.seat?.name).toBe("C-12");
+  });
+
+  it("カウンター指定の1名は C1", () => {
+    expect(choose({ persons: 1, counterOk: true, seatKind: "counter" }).seat?.name).toBe("C1");
+  });
+
+  it("カウンター指定で2名のカウンター席が全部埋まっていたら、テーブルにはせず空き無しにする", () => {
+    const reservations = ["C-12", "C-45", "C-78"].map((n) => booked(`r-${n}`, n));
+    const r = choose({ persons: 2, counterOk: true, seatKind: "counter", reservations });
+    expect(r.seat).toBeNull();
+    expect(r.reason).toBe("full");
+    expect(
+      noSeatMessage({ reason: r.reason!, persons: 2, counterOk: true, seatKind: "counter", sourceLabel: "一休" })
+    ).toBe("一休からの予約ですが、2名様のカウンター席に空きがありません。手動で席を確認してください。");
+  });
+
+  it("テーブル指定は従来どおりテーブルに割り当てる", () => {
+    expect(choose({ persons: 2, counterOk: false, seatKind: "table" }).seat?.name).toBe("右テーブル");
+  });
+});

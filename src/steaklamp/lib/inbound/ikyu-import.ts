@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
 import { findSeat } from "./hotpepper-import";
+import { detectSeatKind } from "./hotpepper-parser";
 import { noSeatMessage } from "./seat-allocation";
 import { parseIkyuReservationMail } from "./ikyu-parser";
 
@@ -44,12 +45,6 @@ function inferCourse(planNameRaw: string | null | undefined) {
     courseName: planName || "席のみ",
     coursePrice: null,
   };
-}
-
-// カウンター希望の判定は席管理名称だけを見る。
-// コメント欄には「カウンターをテーブルに変更してください」のような逆の依頼が入ることがあるため使わない。
-function inferCounterOk(parsed: { seatLabel?: string | null }) {
-  return String(parsed.seatLabel ?? "").includes("カウンター");
 }
 
 export async function importIkyuReservationFromText(args: {
@@ -226,7 +221,9 @@ export async function importIkyuReservationFromText(args: {
   }
 
   const duration = parsed.durationMinutes || 120;
-  const counterOk = inferCounterOk(parsed);
+  // 席管理名称の「カウンター」「テーブル」から席種を決める（コメント欄は使わない）
+  const seatKind = detectSeatKind(parsed.seatLabel);
+  const counterOk = seatKind === "counter";
   const course = inferCourse(parsed.planName);
 
   const seatChoice = await findSeat({
@@ -235,6 +232,7 @@ export async function importIkyuReservationFromText(args: {
     startAt,
     duration,
     counterOk,
+    seatKind,
     excludeReservationId: existingRes.data?.id ?? null,
     // 変更メールでは、元の席が新しい日時・人数でも空いていればそのまま維持する
     preferSeatId: parsed.mailType === "change" ? existingRes.data?.seat_id ?? null : null,
@@ -250,6 +248,7 @@ export async function importIkyuReservationFromText(args: {
           reason: seatChoice.reason,
           persons,
           counterOk,
+          seatKind,
           sourceLabel: "一休",
         });
 

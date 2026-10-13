@@ -73,6 +73,7 @@ export async function findSeat(args: {
   startAt: Date;
   duration: number;
   counterOk: boolean;
+  seatKind?: "counter" | "table" | "unknown";
   excludeReservationId?: string | null;
   preferSeatId?: string | null;
 }) {
@@ -109,6 +110,7 @@ export async function findSeat(args: {
     startAt,
     duration,
     counterOk: args.counterOk,
+    seatKind: args.seatKind,
     excludeReservationId: args.excludeReservationId,
     preferSeatId: args.preferSeatId,
   });
@@ -298,6 +300,7 @@ export async function importHotpepperReservationFromText(args: {
     startAt,
     duration,
     counterOk,
+    seatKind: parsed.seatKind,
     excludeReservationId: existingRes.data?.id ?? null,
     // 変更メールでは、元の席が新しい日時・人数でも空いていればそのまま維持する
     preferSeatId: parsed.mailType === "change" ? existingRes.data?.seat_id ?? null : null,
@@ -313,6 +316,7 @@ export async function importHotpepperReservationFromText(args: {
           reason: seatChoice.reason,
           persons,
           counterOk,
+          seatKind: parsed.seatKind,
           sourceLabel: "ホットペッパー",
         });
 

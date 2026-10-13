@@ -93,6 +93,8 @@ export function chooseSeat(args: {
   startAt: Date;
   duration: number;
   counterOk: boolean;
+  // メールの席情報から読み取った席種。"counter" のときはカウンター席の中から選ぶ。
+  seatKind?: "counter" | "table" | "unknown";
   // 変更メールで、自分自身の予約が占有している席を空きとして扱う
   excludeReservationId?: string | null;
   // 変更メールで、元の席が新しい日時・人数でも空いていれば維持する
@@ -146,6 +148,10 @@ export function chooseSeat(args: {
     const seatName = String(seat.name ?? "");
 
     if (isPhysicalTableSeat(seatName)) return false;
+    // 席情報が「カウンター」の予約は、テーブル席ではなくカウンター席に割り当てる
+    if (args.seatKind === "counter" && !(isCounterSeat(seatName) || isCounterGroupSeat(seatName))) {
+      return false;
+    }
     if (!allowCounter && (isCounterSeat(seatName) || isCounterGroupSeat(seatName))) return false;
     if (persons <= 1 && isCounterGroupSeat(seatName)) return false;
 
@@ -177,9 +183,10 @@ export function noSeatMessage(args: {
   reason: NoSeatReason;
   persons: number;
   counterOk: boolean;
+  seatKind?: "counter" | "table" | "unknown";
   sourceLabel: string;
 }) {
-  const { reason, persons, counterOk, sourceLabel } = args;
+  const { reason, persons, counterOk, seatKind, sourceLabel } = args;
   const head = `${sourceLabel}からの予約ですが、`;
 
   if (reason === "counter_only") {
@@ -194,7 +201,11 @@ export function noSeatMessage(args: {
     return `${head}${persons}名様のテーブル席に空きがありません。カウンターへの変更が可能か確認してください。`;
   }
 
-  return persons <= 1
-    ? `${head}1名で座れるカウンター席に空きがありません。手動で席を確認してください。`
+  if (persons <= 1) {
+    return `${head}1名で座れるカウンター席に空きがありません。手動で席を確認してください。`;
+  }
+
+  return seatKind === "counter"
+    ? `${head}${persons}名様のカウンター席に空きがありません。手動で席を確認してください。`
     : `${head}${persons}名様の席（カウンター含む）に空きがありません。手動で席を確認してください。`;
 }
