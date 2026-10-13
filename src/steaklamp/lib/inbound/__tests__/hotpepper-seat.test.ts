@@ -172,3 +172,45 @@ describe("変更メールの席割り当て", () => {
     expect(state.updates[0].counter_acceptable).toBe(false);
   });
 });
+
+describe("変更メールでの席の維持と警告文（取り込み全体）", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-13T00:00:00+09:00"));
+    state.updates = [];
+    state.existing = {
+      id: "res-2",
+      status: "booked",
+      session_id: null,
+      name: "テスト　タロウ",
+      persons: 2,
+      start_at: "2026-10-22T10:00:00+00:00",
+      notes: "ホットペッパー予約",
+      seat_id: "seat-左テーブル", // 先頭候補(右テーブル)ではない席に入っていた
+      duration_minutes: 120,
+    };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("元の席が空いていれば、変更後もそのまま同じ席にする", async () => {
+    const result: any = await importHotpepperReservationFromText({ rawText: TABLE_MAIL, subject: SUBJECT });
+    expect(result.assignedSeatName).toBe("左テーブル");
+    expect(state.updates[0].seat_id).toBe("seat-左テーブル");
+  });
+
+  it("1名のテーブル席予約: 空いていても出ていた「満席」ではなく、実際の理由を警告する", async () => {
+    state.existing.persons = 1;
+    state.existing.seat_id = null;
+    const mail = TABLE_MAIL.replace("2名様 → 2名様", "1名様 → 1名様");
+    const result: any = await importHotpepperReservationFromText({ rawText: mail, subject: SUBJECT });
+
+    expect(result.assignmentStatus).toBe("unassigned");
+    expect(result.warningMessage).toBe(
+      "ホットペッパーからの予約ですが、1名様が座れる席はカウンター席のみです。カウンターで案内できるか確認してください。"
+    );
+    expect(result.warningMessage).not.toContain("満席");
+  });
+});

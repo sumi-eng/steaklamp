@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { extractMailContent } from "@/steaklamp/lib/inbound/mail-body";
 import { parseTabelogReservationMail } from "@/steaklamp/lib/inbound/tabelog-parser";
+import { noSeatMessage, type NoSeatReason } from "@/steaklamp/lib/inbound/seat-allocation";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
 
 
@@ -75,8 +76,9 @@ async function findAvailableSeat(args: {
   duration: number;
   seatLabel: string;
   excludeReservationId?: string | null;
+  preferSeatId?: string | null;
 }) {
-  const { storeId, persons, startAt, duration, seatLabel, excludeReservationId } = args;
+  const { storeId, persons, startAt, duration, seatLabel, excludeReservationId, preferSeatId } = args;
   const endAt = addMinutes(startAt, duration);
 
   const { data: seats, error: seatsError } = await supabaseAdmin
@@ -125,20 +127,35 @@ async function findAvailableSeat(args: {
 
   const wantsCounter = seatLabel.includes("カウンター");
 
-  const candidates = (seats ?? [])
+  const activeSeats = (seats ?? [])
     .filter((seat: any) => seat.is_active !== false)
-    .filter((seat: any) => seat.is_reservable !== false)
-    .filter((seat: any) => {
-      const name = String(seat.name ?? "");
+    .filter((seat: any) => seat.is_reservable !== false);
 
-      if (isPhysicalTableSeat(name)) return false;
-      if (persons < minCap(seat) || persons > maxCap(seat)) return false;
+  const isFree = (seat: any) =>
+    !hasSeatConflict(expandPhysicalSeatIds(String(seat.id), members), occupiedPhysicalSeatIds);
 
-      const physicalIds = expandPhysicalSeatIds(String(seat.id), members);
-      if (hasSeatConflict(physicalIds, occupiedPhysicalSeatIds)) return false;
+  // 変更メールで、元の席が新しい日時・人数でも空いていればそのまま維持する
+  if (preferSeatId) {
+    const preferred = activeSeats.find((s: any) => String(s.id) === String(preferSeatId));
+    if (
+      preferred &&
+      persons >= minCap(preferred) &&
+      persons <= maxCap(preferred) &&
+      isFree(preferred)
+    ) {
+      return { seat: preferred, reason: null as NoSeatReason | null };
+    }
+  }
 
-      return true;
-    })
+  // 人数に合う席(席マスタ上の候補)。ここが空なら「人数に合う席がない」
+  const fitting = activeSeats.filter((seat: any) => {
+    const name = String(seat.name ?? "");
+    if (isPhysicalTableSeat(name)) return false;
+    return persons >= minCap(seat) && persons <= maxCap(seat);
+  });
+
+  const candidates = fitting
+    .filter(isFree)
     .sort((a: any, b: any) => {
       const an = String(a.name ?? "");
       const bn = String(b.name ?? "");
@@ -152,7 +169,12 @@ async function findAvailableSeat(args: {
       return Number(a.sort_order ?? 9999) - Number(b.sort_order ?? 9999);
     });
 
-  return candidates[0] ?? null;
+  if (candidates[0]) return { seat: candidates[0], reason: null as NoSeatReason | null };
+
+  return {
+    seat: null,
+    reason: (fitting.length > 0 ? "full" : "capacity") as NoSeatReason | null,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -286,7 +308,7 @@ export async function POST(req: NextRequest) {
 
     const existingRes = await supabaseAdmin
       .from("reservations")
-      .select("id, status, session_id, notes")
+      .select("id, status, session_id, notes, seat_id")
       .eq("store_id", store.id)
       .eq("external_source", "tabelog")
       .eq("external_reservation_id", parsed.externalId)
@@ -350,14 +372,16 @@ export async function POST(req: NextRequest) {
     const startAt = buildStartAt(parsed.date, parsed.time);
     const duration = Number(parsed.durationMinutes ?? 120);
 
-    const selectedSeat = await findAvailableSeat({
+    const seatChoice = await findAvailableSeat({
       storeId: store.id,
       persons: parsed.persons,
       startAt,
       duration,
       seatLabel: parsed.seatLabel ?? "",
       excludeReservationId: existingRes.data?.id ?? null,
+      preferSeatId: mailType === "change" ? existingRes.data?.seat_id ?? null : null,
     });
+    const selectedSeat = seatChoice.seat;
 
     // 変更は既存の備考(要望・アレルギー等)を消さずに追記する
     const isChange = mailType === "change";
@@ -373,11 +397,15 @@ export async function POST(req: NextRequest) {
 
     const assignmentStatus = selectedSeat ? "assigned" : "unassigned";
 
-const warningMessage = selectedSeat
-  ? null
-  : parsed.seatLabel?.includes("カウンター")
-    ? "食べログからの予約ですが、割り当て可能な席がありません。手動で席を確認してください。"
-    : "食べログからの予約ですが、テーブル席が満席です。カウンター変更可能か確認が必要です。";
+const warningMessage =
+  selectedSeat || !seatChoice.reason
+    ? null
+    : noSeatMessage({
+        reason: seatChoice.reason,
+        persons: parsed.persons,
+        counterOk: Boolean(parsed.seatLabel?.includes("カウンター")),
+        sourceLabel: "食べログ",
+      });
 
     const payload = {
       store_id: store.id,

@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
+import { chooseSeat, noSeatMessage } from "./seat-allocation";
+import type { ReservationRow, SeatMemberRow, SeatRow } from "./seat-allocation";
 import {
   applyPointNote,
   buildPointNoteLine,
@@ -7,56 +9,12 @@ import {
   parseHotpepperReservationMail,
 } from "./hotpepper-parser";
 
-type SeatRow = {
-  id: string;
-  name: string;
-  min_persons?: number | null;
-  max_persons?: number | null;
-  capacity_min?: number | null;
-  capacity_max?: number | null;
-  is_active?: boolean | null;
-  is_reservable?: boolean | null;
-  sort_order?: number | null;
-};
-
-type SeatMemberRow = {
-  group_seat_id: string;
-  member_seat_id: string;
-};
-
 function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
-function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
-  return aStart < bEnd && bStart < aEnd;
-}
-
-function minCap(seat: SeatRow) {
-  return Number(seat.min_persons ?? seat.capacity_min ?? 1);
-}
-
-function maxCap(seat: SeatRow) {
-  return Number(seat.max_persons ?? seat.capacity_max ?? 99);
-}
-
 function buildStartAt(date: string, time: string) {
   return new Date(`${date}T${time}:00+09:00`);
-}
-
-function expandPhysicalSeatIds(seatId: string, members: SeatMemberRow[]) {
-  const childIds = members
-    .filter((m) => String(m.group_seat_id) === String(seatId))
-    .map((m) => String(m.member_seat_id));
-
-  return new Set(childIds.length > 0 ? childIds : [String(seatId)]);
-}
-
-function hasSeatConflict(a: Set<string>, b: Set<string>) {
-  for (const id of a) {
-    if (b.has(id)) return true;
-  }
-  return false;
 }
 
 function normalizePlanName(value: string | null | undefined) {
@@ -97,22 +55,6 @@ function inferCourse(planNameRaw: string | null | undefined) {
   };
 }
 
-function isPhysicalTableSeat(name: string) {
-  return /^T\d+-\d+$/.test(name);
-}
-
-function isCounterSeat(name: string) {
-  return /^C\d+$/.test(name);
-}
-
-function isCounterGroupSeat(name: string) {
-  return /^C-\d+/.test(name);
-}
-
-function isSixTableSeatName(name: string) {
-  return name === "右6名席" || name === "左6名席";
-}
-
 function inferCounterOk(parsed: {
   seatLabel?: string | null;
   requestText?: string | null;
@@ -124,15 +66,17 @@ function inferCounterOk(parsed: {
   );
 }
 
-export async function findSeatCandidate(args: {
+// 席候補を探す。DBから席・予約を読み込み、割り当て自体は seat-allocation の chooseSeat で行う。
+export async function findSeat(args: {
   storeId: string;
   persons: number;
   startAt: Date;
   duration: number;
   counterOk: boolean;
   excludeReservationId?: string | null;
+  preferSeatId?: string | null;
 }) {
-  const { storeId, persons, startAt, duration, counterOk, excludeReservationId } = args;
+  const { storeId, startAt, duration } = args;
   const endAt = addMinutes(startAt, duration);
 
   const [seatsRes, membersRes, reservationsRes] = await Promise.all([
@@ -157,58 +101,22 @@ export async function findSeatCandidate(args: {
   if (membersRes.error) throw membersRes.error;
   if (reservationsRes.error) throw reservationsRes.error;
 
-  const members = (membersRes.data ?? []) as SeatMemberRow[];
+  return chooseSeat({
+    seats: (seatsRes.data ?? []) as SeatRow[],
+    members: (membersRes.data ?? []) as SeatMemberRow[],
+    reservations: (reservationsRes.data ?? []) as ReservationRow[],
+    persons: args.persons,
+    startAt,
+    duration,
+    counterOk: args.counterOk,
+    excludeReservationId: args.excludeReservationId,
+    preferSeatId: args.preferSeatId,
+  });
+}
 
-  const seats = ((seatsRes.data ?? []) as SeatRow[])
-    .filter((s) => s.is_active !== false)
-    .filter((s) => s.is_reservable !== false)
-    .sort((a, b) => {
-      const ao = Number(a.sort_order ?? 9999);
-      const bo = Number(b.sort_order ?? 9999);
-      if (ao !== bo) return ao - bo;
-      return String(a.name).localeCompare(String(b.name), "ja");
-    });
-
-  const occupiedPhysicalSeatIds = new Set<string>();
-
-  for (const r of reservationsRes.data ?? []) {
-    if (!r.seat_id || !r.start_at) continue;
-    if (excludeReservationId && String(r.id) === String(excludeReservationId)) continue;
-    if (["cancelled", "finished", "no_show"].includes(String(r.status))) continue;
-
-    const rStart = new Date(r.start_at);
-    const rEnd = addMinutes(rStart, Number(r.duration_minutes ?? 120));
-
-    if (!overlaps(startAt, endAt, rStart, rEnd)) continue;
-
-    const reservedPhysicalSeatIds = expandPhysicalSeatIds(String(r.seat_id), members);
-    for (const id of reservedPhysicalSeatIds) {
-      occupiedPhysicalSeatIds.add(id);
-    }
-  }
-
-  return (
-    seats.find((seat) => {
-      const seatName = String(seat.name ?? "");
-
-      if (isPhysicalTableSeat(seatName)) return false;
-      if (!counterOk && (isCounterSeat(seatName) || isCounterGroupSeat(seatName))) return false;
-      if (persons <= 1 && isCounterGroupSeat(seatName)) return false;
-
-      // 6名以上は6名席を候補から外して、8名席・全テーブル側に寄せる
-      if (persons >= 6 && isSixTableSeatName(seatName)) return false;
-
-      if (persons < minCap(seat) || persons > maxCap(seat)) return false;
-
-      const candidatePhysicalSeatIds = expandPhysicalSeatIds(String(seat.id), members);
-
-      if (hasSeatConflict(candidatePhysicalSeatIds, occupiedPhysicalSeatIds)) {
-        return false;
-      }
-
-      return true;
-    }) ?? null
-  );
+// 後方互換: 席だけを返す
+export async function findSeatCandidate(args: Parameters<typeof findSeat>[0]) {
+  return (await findSeat(args)).seat;
 }
 
 export async function importHotpepperReservationFromText(args: {
@@ -288,7 +196,7 @@ export async function importHotpepperReservationFromText(args: {
 
   const existingRes = await supabaseAdmin
     .from("reservations")
-    .select("id, status, session_id, name, persons, start_at, notes")
+    .select("id, status, session_id, name, persons, start_at, notes, seat_id")
     .eq("store_id", store.id)
     .eq("external_source", "hotpepper")
     .eq("external_reservation_id", parsed.externalId)
@@ -384,25 +292,32 @@ export async function importHotpepperReservationFromText(args: {
   const counterOk = inferCounterOk(parsed);
   const course = inferCourse(parsed.planName);
 
-  const selectedSeat = await findSeatCandidate({
+  const seatChoice = await findSeat({
     storeId: store.id,
     persons,
     startAt,
     duration,
     counterOk,
     excludeReservationId: existingRes.data?.id ?? null,
+    // 変更メールでは、元の席が新しい日時・人数でも空いていればそのまま維持する
+    preferSeatId: parsed.mailType === "change" ? existingRes.data?.seat_id ?? null : null,
   });
+  const selectedSeat = seatChoice.seat;
 
   const assignmentStatus = selectedSeat ? "assigned" : "unassigned";
 
-const warningMessage = selectedSeat
-  ? null
-  : counterOk
-    ? "ホットペッパーからの予約ですが、割り当て可能な席がありません。手動で席を確認してください。"
-    : "ホットペッパーからの予約ですが、テーブル席が満席です。カウンター変更可能か確認が必要です。";
+  const warningMessage =
+    selectedSeat || !seatChoice.reason
+      ? null
+      : noSeatMessage({
+          reason: seatChoice.reason,
+          persons,
+          counterOk,
+          sourceLabel: "ホットペッパー",
+        });
 
-
-  const noteLines = [
+  
+const noteLines = [
     "ホットペッパー予約",
         parsed.seatLabel ? `席情報: ${parsed.seatLabel.replace(/\n/g, " ")}` : null,
     parsed.planName ? `メールコース名: ${parsed.planName}` : null,

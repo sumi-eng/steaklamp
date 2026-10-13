@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
-import { findSeatCandidate } from "./hotpepper-import";
+import { findSeat } from "./hotpepper-import";
+import { noSeatMessage } from "./seat-allocation";
 import { parseIkyuReservationMail } from "./ikyu-parser";
 
 function buildStartAt(date: string, time: string) {
@@ -128,7 +129,7 @@ export async function importIkyuReservationFromText(args: {
 
   const existingRes = await supabaseAdmin
     .from("reservations")
-    .select("id, status, session_id, name, persons, start_at, notes")
+    .select("id, status, session_id, name, persons, start_at, notes, seat_id")
     .eq("store_id", store.id)
     .eq("external_source", "ikyu")
     .eq("external_reservation_id", parsed.externalId)
@@ -228,24 +229,32 @@ export async function importIkyuReservationFromText(args: {
   const counterOk = inferCounterOk(parsed);
   const course = inferCourse(parsed.planName);
 
-  const selectedSeat = await findSeatCandidate({
+  const seatChoice = await findSeat({
     storeId: store.id,
     persons,
     startAt,
     duration,
     counterOk,
     excludeReservationId: existingRes.data?.id ?? null,
+    // 変更メールでは、元の席が新しい日時・人数でも空いていればそのまま維持する
+    preferSeatId: parsed.mailType === "change" ? existingRes.data?.seat_id ?? null : null,
   });
+  const selectedSeat = seatChoice.seat;
 
   const assignmentStatus = selectedSeat ? "assigned" : "unassigned";
 
-  const warningMessage = selectedSeat
-    ? null
-    : counterOk
-      ? "一休からの予約ですが、割り当て可能な席がありません。手動で席を確認してください。"
-      : "一休からの予約ですが、テーブル席が満席です。カウンター変更可能か確認が必要です。";
+  const warningMessage =
+    selectedSeat || !seatChoice.reason
+      ? null
+      : noSeatMessage({
+          reason: seatChoice.reason,
+          persons,
+          counterOk,
+          sourceLabel: "一休",
+        });
 
-  const noteLines = [
+  
+const noteLines = [
     "一休予約",
     parsed.kana ? `ふりがな: ${parsed.kana}` : null,
     parsed.personsDetail ? `人数: ${parsed.personsDetail}` : null,
