@@ -3,6 +3,7 @@ import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib
 import {
   applyPointNote,
   buildPointNoteLine,
+  detectSeatKind,
   parseHotpepperReservationMail,
 } from "./hotpepper-parser";
 
@@ -116,8 +117,11 @@ function inferCounterOk(parsed: {
   seatLabel?: string | null;
   requestText?: string | null;
 }) {
-  const text = `${parsed.seatLabel ?? ""}\n${parsed.requestText ?? ""}`;
-  return text.includes("カウンター");
+  // 席情報の席種（全角表記・2行目の「カウンター」も考慮）、またはご要望にカウンターの記載がある場合
+  return (
+    detectSeatKind(parsed.seatLabel) === "counter" ||
+    String(parsed.requestText ?? "").includes("カウンター")
+  );
 }
 
 export async function findSeatCandidate(args: {
@@ -400,7 +404,7 @@ const warningMessage = selectedSeat
 
   const noteLines = [
     "ホットペッパー予約",
-        parsed.seatLabel ? `席情報: ${parsed.seatLabel}` : null,
+        parsed.seatLabel ? `席情報: ${parsed.seatLabel.replace(/\n/g, " ")}` : null,
     parsed.planName ? `メールコース名: ${parsed.planName}` : null,
     parsed.questionAnswerText ? `苦手なもの・アレルギー:${parsed.questionAnswerText}` : null,
   parsed.requestText ? `ご要望事項:\n${parsed.requestText}` : null,

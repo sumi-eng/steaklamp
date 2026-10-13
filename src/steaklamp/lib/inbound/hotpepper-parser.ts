@@ -84,6 +84,36 @@ export function detectHotpepperMailType(
   return byBody;
 }
 
+export type SeatKind = "counter" | "table" | "unknown";
+
+// 席情報の席種を判定する。全角英数字・記号（Ｔ１～Ｔ３、Ｃ１～８ 等）は半角にそろえてから見る。
+// 「C1～8」はカウンター席、「T1～T3」はテーブル席。2行目の「カウンター（喫煙可）」等の表記も使う。
+export function detectSeatKind(seatLabel: string | null | undefined): SeatKind {
+  const label = String(seatLabel ?? "").normalize("NFKC");
+  if (!label) return "unknown";
+
+  if (label.includes("カウンター") || /(^|\s)C\s*\d+\s*[~\-ー]\s*C?\s*\d+/.test(label)) {
+    return "counter";
+  }
+  if (label.includes("テーブル") || /(^|\s)T\s*\d+/.test(label)) return "table";
+  return "unknown";
+}
+
+// 「■席情報：」の値。次の行以降のインデントされた行（2行目の席種表記など）も含める。
+function getSeatInfo(normalizedText: string) {
+  const lines = normalizedText.split("\n");
+  const i = lines.findIndex((line) => line.startsWith("■席情報："));
+  if (i < 0) return "";
+
+  const values = [lines[i].slice("■席情報：".length).trim()];
+  for (let j = i + 1; j < lines.length; j++) {
+    if (!/^[ 　\t]+\S/.test(lines[j])) break;
+    values.push(lines[j].trim());
+  }
+
+  return values.filter(Boolean).join("\n");
+}
+
 const POINT_NOTE_PREFIX = "ポイント利用：";
 
 // 備考に入れるポイント利用の行。0ポイント・不明のときは入れない。
@@ -153,6 +183,8 @@ export function parseHotpepperReservationMail(text: string, subject = "") {
   const personsText = afterArrow(personsRaw);
 
   // 「■ポイント利用額：500ポイント」（変更時は「500ポイント → 1000ポイント」）。変更後の値を使う。
+  const seatLabel = getSeatInfo(normalized);
+
   const pointsRaw = afterArrow(get("ポイント利用額"));
   const pointsDigits = pointsRaw.match(/[\d,]+/)?.[0]?.replace(/,/g, "") ?? "";
   const pointsUsed = pointsDigits ? Number(pointsDigits) : null;
@@ -179,7 +211,8 @@ const questionAnswerText = extractQuestionAnswerText(normalized);
     pointsUsed,
     persons: personsMatch ? Number(personsMatch[1]) : 0,
     planName: get("コース"),
-    seatLabel: get("席情報"),
+    seatLabel,
+    seatKind: detectSeatKind(seatLabel),
     requestText,
     rawText: normalized,
 questionAnswerText,
