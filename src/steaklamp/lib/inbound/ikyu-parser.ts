@@ -16,9 +16,13 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// ●ラベル　　：値 の値部分（続く行は、空行・次の●・区切り線まで連結する）
+// 項目の先頭記号。通常は「●」、変更メールでは変更された項目が「○」になる（〇◯などの似た記号も同じ扱い）。
+const MARK_CHARS = "●○〇◯◎◉";
+const MARK_RE = new RegExp(`^[${MARK_CHARS}]`);
+
+// ●ラベル　　：値 の値部分（続く行は、空行・次の項目・区切り線まで連結する）
 function getField(text: string, label: string) {
-  const re = new RegExp(`^●${escapeRegExp(label)}[ 　\\t]*[：:](.*)$`, "m");
+  const re = new RegExp(`^[${MARK_CHARS}]${escapeRegExp(label)}[ 　\\t]*[：:](.*)$`, "m");
   const m = re.exec(text);
   if (!m) return "";
 
@@ -28,12 +32,18 @@ function getField(text: string, label: string) {
   for (const line of rest) {
     const trimmed = cleanLine(line);
     if (!trimmed) break;
-    if (trimmed.startsWith("●")) break;
+    if (MARK_RE.test(trimmed)) break;
     if (/^[-=━─＝－◆■□]{3,}/.test(trimmed)) break;
     lines.push(line);
   }
 
   return normalizeMultilineValue(lines.map((line) => cleanLine(line)).join("\n"));
+}
+
+// 変更メールで「○」が付いている(=変更された)項目のラベル一覧
+function getChangedFields(text: string) {
+  const re = new RegExp(`^[○〇◯◎]([^：:\\n]+?)[ 　\\t]*[：:]`, "gm");
+  return [...text.matchAll(re)].map((m) => m[1].trim());
 }
 
 // 予約ではない通知（件名で判定）。「レストラン情報変更通知」は「変更」を含むが予約変更ではない。
@@ -141,6 +151,7 @@ export function parseIkyuReservationMail(text: string, subject = "") {
   const { date, time } = parseDateTime(getField(normalized, "来店日時"));
   const { name, kana } = parseName(getField(normalized, "来店代表者氏名"));
   const personsDetail = getField(normalized, "来店人数") || getField(normalized, "利用人数");
+  const changedFields = getChangedFields(normalized);
 
   return {
     mailType: detectType(subject, normalized),
@@ -161,6 +172,9 @@ export function parseIkyuReservationMail(text: string, subject = "") {
     seatLabel: getField(normalized, "席管理名称"),
     comment: getField(normalized, "コメント"),
     cancelReason: getField(normalized, "キャンセル理由"),
+    changedFields,
+    // 変更メールで席管理名称が変更された（席を選び直す必要がある）
+    seatChanged: changedFields.includes("席管理名称"),
     rawText: normalized,
   };
 }

@@ -235,7 +235,9 @@ export async function importIkyuReservationFromText(args: {
     seatKind,
     excludeReservationId: existingRes.data?.id ?? null,
     // 変更メールでは、元の席が新しい日時・人数でも空いていればそのまま維持する
-    preferSeatId: parsed.mailType === "change" ? existingRes.data?.seat_id ?? null : null,
+    // 変更メールでは、席管理名称が変わっていなければ元の席を維持する（変わっていれば選び直す）
+    preferSeatId:
+      parsed.mailType === "change" && !parsed.seatChanged ? existingRes.data?.seat_id ?? null : null,
   });
   const selectedSeat = seatChoice.seat;
 

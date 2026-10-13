@@ -18,7 +18,11 @@ const SEATS = SEAT_DEFS.map(([name, min, max], i) => ({
   sort_order: i + 1,
 }));
 
-const state = vi.hoisted(() => ({ inserts: [] as any[] }));
+const state = vi.hoisted(() => ({
+  inserts: [] as any[],
+  updates: [] as any[],
+  existing: null as any,
+}));
 
 vi.mock("@/steaklamp/lib/supabaseAdmin", () => {
   const result = (table: string, op: string) => {
@@ -26,7 +30,8 @@ vi.mock("@/steaklamp/lib/supabaseAdmin", () => {
     if (table === "seats") return { data: SEATS, error: null };
     if (table === "seat_members") return { data: [], error: null };
     if (op === "insert") return { data: { id: "new-1", status: "booked" }, error: null };
-    return { data: null, error: null }; // 既存予約なし
+    if (op === "update") return { data: { id: state.existing?.id, status: "booked" }, error: null };
+    return { data: state.existing, error: null }; // 既存予約(無ければ null)
   };
 
   return {
@@ -44,10 +49,19 @@ vi.mock("@/steaklamp/lib/supabaseAdmin", () => {
             state.inserts.push(payload);
             return b;
           },
+          update: (payload: any) => {
+            op = "update";
+            state.updates.push(payload);
+            return b;
+          },
           single: () => Promise.resolve(result(table, op)),
           maybeSingle: () => Promise.resolve(result(table, op)),
           then: (ok: any, ng: any) =>
-            Promise.resolve(table === "reservations" ? { data: [], error: null } : result(table, op)).then(ok, ng),
+            Promise.resolve(
+              table === "reservations"
+                ? { data: state.existing ? [state.existing] : [], error: null }
+                : result(table, op)
+            ).then(ok, ng),
         };
         return b;
       },
@@ -95,6 +109,8 @@ describe("一休の席割り当て（席管理名称の席種）", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-14T00:00:00+09:00"));
     state.inserts = [];
+    state.updates = [];
+    state.existing = null;
   });
   afterEach(() => vi.useRealTimers());
 
@@ -115,5 +131,78 @@ describe("一休の席割り当て（席管理名称の席種）", () => {
     const result: any = await importIkyuReservationFromText({ rawText: mail(TABLE_LABEL), subject: SUBJECT });
     expect(result.assignedSeatName).toBe("右テーブル");
     expect(state.inserts[0].counter_acceptable).toBe(false);
+  });
+});
+
+// 変更メールの実物（抜粋）。来店日時・来店人数・席管理名称が「○」（変更された項目）
+const CHANGE_SUBJECT = "【変更_現地決済】予約変更受付のお知らせ [予約NO：IR0559630246] 通知NO：10000010【店舗ID：156058】";
+const changeMail = (seatMark: "○" | "●") => `お世話になっております。株式会社一休です。
+以下の通り、予約内容が変更されましたので、ご確認ください。
+※ 変更箇所は「○」の付いている項目です。
+
+●予約サイト　　　：一休.comレストラン
+●予約番号　　　　：IR0559630246
+○来店日時　　　　：2026年10月22日（木） 19:30
+●滞在時間（目安）：150分
+●決済方法　　　　：現地決済
+○来店人数　　　　：3人　　内訳（大人 3人、お子様 0人）
+●プランNo　　　　：12840052
+●プラン　　　　　：(ディナー)席のみ予約
+●席No　　　　　　：20596649
+${seatMark}席管理名称　　　：1名/カウンター/コネクト可/8卓
+　　　　　　　　　　カウンター(禁煙)（×3卓）
+`;
+
+describe("一休の変更メール（実物）の取り込み", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T00:00:00+09:00"));
+    state.inserts = [];
+    state.updates = [];
+    // テーブル席(右テーブル)に入っていた2名の既存予約
+    state.existing = {
+      id: "res-ikyu",
+      status: "booked",
+      session_id: null,
+      name: "〇〇 〇〇",
+      persons: 2,
+      start_at: "2026-10-22T09:00:00+00:00",
+      notes: "一休予約\nコメント:\nアレルギーあり",
+      seat_id: "seat-右テーブル",
+      duration_minutes: 150,
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("「○」付きの来店日時・人数を読み、席管理名称が変わったのでカウンター席(C-123)に選び直す", async () => {
+    const result: any = await importIkyuReservationFromText({
+      rawText: changeMail("○"),
+      subject: CHANGE_SUBJECT,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.needsReview).toBeUndefined();
+    expect(result.action).toBe("updated");
+    expect(result.assignedSeatName).toBe("C-123");
+
+    const update = state.updates[0];
+    expect(update.start_at).toBe("2026-10-22T10:30:00.000Z"); // JST 19:30
+    expect(update.persons).toBe(3);
+    expect(update.seat_id).toBe("seat-C-123");
+    // 既存の備考は残る
+    expect(update.notes).toContain("アレルギーあり");
+  });
+
+  it("席管理名称が変わっていなければ(●)、元の席を維持する", async () => {
+    // 選び直しなら先頭候補の C-123 になるが、元の席 C-678 が空いているのでそのまま維持される
+    state.existing.seat_id = "seat-C-678";
+    const result: any = await importIkyuReservationFromText({
+      rawText: changeMail("●"),
+      subject: CHANGE_SUBJECT,
+    });
+
+    expect(result.action).toBe("updated");
+    expect(result.assignedSeatName).toBe("C-678");
+    expect(state.updates[0].seat_id).toBe("seat-C-678");
   });
 });

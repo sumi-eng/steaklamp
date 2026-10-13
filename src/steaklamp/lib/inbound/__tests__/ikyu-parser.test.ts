@@ -155,3 +155,62 @@ describe("一休 件名による判定", () => {
     expect(parseIkyuReservationMail(CANCEL_MAIL, S_NEW).mailType).toBe("unknown");
   });
 });
+
+// 変更メールの実物（2026-10 受信、抜粋）。変更された項目は先頭が「○」、値は変更後のみ（矢印なし）。
+const REAL_CHANGE_MAIL = `お世話になっております。株式会社一休です。
+以下の通り、予約内容が変更されましたので、ご確認ください。
+※ 変更箇所は「○」の付いている項目です。
+
+●予約サイト　　　：一休.comレストラン
+●予約番号　　　　：IR0559630246
+○来店日時　　　　：2026年10月22日（木） 19:30
+●滞在時間（目安）：150分
+●決済方法　　　　：現地決済
+○来店人数　　　　：3人　　内訳（大人 3人、お子様 0人）
+●プランNo　　　　：12840052
+●プラン　　　　　：(ディナー)席のみ予約
+●席No　　　　　　：20596649
+○席管理名称　　　：1名/カウンター/コネクト可/8卓
+　　　　　　　　　　カウンター(禁煙)（×3卓）
+`;
+const S_REAL_CHANGE = "【変更_現地決済】予約変更受付のお知らせ [予約NO：IR0559630246] 通知NO：10000010【店舗ID：156058】";
+
+describe("一休 変更メールの実物（「○」付きの項目）", () => {
+  it("「○」の付いた来店日時・来店人数・席管理名称を読める", () => {
+    const p = parseIkyuReservationMail(REAL_CHANGE_MAIL, S_REAL_CHANGE);
+    expect(p.mailType).toBe("change");
+    expect(p.externalId).toBe("IR0559630246");
+    expect(p.date).toBe("2026-10-22");
+    expect(p.time).toBe("19:30");
+    expect(p.persons).toBe(3); // 「3人　内訳（大人 3人、お子様 0人）」
+    expect(p.durationMinutes).toBe(150);
+    expect(p.planName).toBe("(ディナー)席のみ予約");
+    expect(p.seatLabel).toBe("1名/カウンター/コネクト可/8卓\nカウンター(禁煙)（×3卓）");
+  });
+
+  it("変更された項目(○)を判別できる。席管理名称が変わったかも分かる", () => {
+    const p = parseIkyuReservationMail(REAL_CHANGE_MAIL, S_REAL_CHANGE);
+    expect(p.changedFields).toEqual(["来店日時", "来店人数", "席管理名称"]);
+    expect(p.seatChanged).toBe(true);
+  });
+
+  it("席管理名称に「○」が付いていなければ、席は変更されていない", () => {
+    const mail = REAL_CHANGE_MAIL.replace("○席管理名称", "●席管理名称");
+    const p = parseIkyuReservationMail(mail, S_REAL_CHANGE);
+    expect(p.seatChanged).toBe(false);
+    expect(p.seatLabel).toContain("カウンター");
+  });
+
+  it.each(["〇", "◯"])("似た記号「%s」も同じ扱いにする", (mark) => {
+    const mail = REAL_CHANGE_MAIL.replace("○来店日時", `${mark}来店日時`).replace("○来店人数", `${mark}来店人数`);
+    const p = parseIkyuReservationMail(mail, S_REAL_CHANGE);
+    expect(p.time).toBe("19:30");
+    expect(p.persons).toBe(3);
+    expect(p.changedFields).toContain("来店日時");
+  });
+
+  it("「○」の項目の値が、次の項目(●)に食い込まない", () => {
+    const p = parseIkyuReservationMail(REAL_CHANGE_MAIL, S_REAL_CHANGE);
+    expect(p.personsDetail).toBe("3人　　内訳（大人 3人、お子様 0人）");
+  });
+});
