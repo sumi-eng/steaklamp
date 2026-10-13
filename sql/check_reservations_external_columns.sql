@@ -20,3 +20,14 @@ having count(*) > 1;
 
 -- 4) status の使用値
 select status, count(*) from public.reservations group by status;
+
+-- 5) 外部予約番号の保存形式（食べログは "net:48912424" のように接頭辞付きで保存されているか）
+select external_source,
+       left(external_reservation_id, 12) as sample_id,
+       length(external_reservation_id) as len,
+       status,
+       start_at
+from public.reservations
+where external_source in ('tabelog', 'ikyu', 'hotpepper')
+order by created_at desc
+limit 30;

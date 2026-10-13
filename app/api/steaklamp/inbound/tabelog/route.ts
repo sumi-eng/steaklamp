@@ -74,8 +74,9 @@ async function findAvailableSeat(args: {
   startAt: Date;
   duration: number;
   seatLabel: string;
+  excludeReservationId?: string | null;
 }) {
-  const { storeId, persons, startAt, duration, seatLabel } = args;
+  const { storeId, persons, startAt, duration, seatLabel, excludeReservationId } = args;
   const endAt = addMinutes(startAt, duration);
 
   const { data: seats, error: seatsError } = await supabaseAdmin
@@ -107,6 +108,8 @@ async function findAvailableSeat(args: {
 
   for (const r of reservations ?? []) {
     if (!r.seat_id || !r.start_at) continue;
+    // 変更メールでは、その予約自身が占有している席を空きとして扱う
+    if (excludeReservationId && String(r.id) === String(excludeReservationId)) continue;
     if (["cancelled", "finished", "no_show"].includes(String(r.status))) continue;
 
     const rStart = new Date(r.start_at);
@@ -216,7 +219,11 @@ export async function POST(req: NextRequest) {
       return json({ ok: true, ignored: true, reason: "not_tabelog_mail" });
     }
 
-    const parsed = parseTabelogReservationMail(textBody, subject);
+    // 年の補完の基準にするメール受信日時（取得できなければ現在時刻）
+    const receivedAtRaw = new Date(String((receivedEmail as any)?.created_at ?? ""));
+    const receivedAt = Number.isNaN(receivedAtRaw.getTime()) ? new Date() : receivedAtRaw;
+
+    const parsed = parseTabelogReservationMail(textBody, subject, receivedAt);
 
     console.log("STEAKLAMP_TABELOG_SUBJECT =", subject);
     console.log("STEAKLAMP_TABELOG_PARSED =", JSON.stringify(parsed, null, 2));
@@ -235,6 +242,12 @@ export async function POST(req: NextRequest) {
       });
       return json({ ok: true, needsReview: true, reason, parsed });
     };
+
+    // 注意喚起・請求・来店一覧など予約以外の通知は台帳に触れない
+    if (parsed.mailType === "ignore") {
+      console.log("STEAKLAMP_TABELOG_IGNORED_SUBJECT =", subject);
+      return json({ ok: true, ignored: true, reason: "not_reservation_mail", parsed });
+    }
 
     if (parsed.mailType === "unknown") {
       return needsReview("種別(新規/変更/キャンセル)を判定できないメール");
@@ -273,7 +286,7 @@ export async function POST(req: NextRequest) {
 
     const existingRes = await supabaseAdmin
       .from("reservations")
-      .select("id, status, session_id")
+      .select("id, status, session_id, notes")
       .eq("store_id", store.id)
       .eq("external_source", "tabelog")
       .eq("external_reservation_id", parsed.externalId)
@@ -290,7 +303,13 @@ export async function POST(req: NextRequest) {
         .from("reservations")
         .update({
           status: "cancelled",
-          notes: ["食べログ予約", "キャンセル通知を受信"].join("\n"),
+          notes: [
+            existingRes.data.notes,
+            "食べログ: キャンセル通知を受信",
+            parsed.cancelReason ? `キャンセル理由: ${parsed.cancelReason}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
         })
         .eq("id", existingRes.data.id)
         .select("id, name, start_at, persons, status")
@@ -309,7 +328,7 @@ export async function POST(req: NextRequest) {
         start_at: data.start_at,
         seatName: null,
         courseName: parsed.planName,
-        notes: null,
+        notes: parsed.cancelReason ? `キャンセル理由: ${parsed.cancelReason}` : null,
         source: "キャンセル",
       });
 
@@ -337,7 +356,20 @@ export async function POST(req: NextRequest) {
       startAt,
       duration,
       seatLabel: parsed.seatLabel ?? "",
+      excludeReservationId: existingRes.data?.id ?? null,
     });
+
+    // 変更は既存の備考(要望・アレルギー等)を消さずに追記する
+    const isChange = mailType === "change";
+    const notesText = isChange
+      ? [
+          existingRes.data?.notes,
+          `食べログ: 変更通知を受信（日付: ${parsed.prevDate || "-"} → ${parsed.date} ${parsed.time} / 人数: ${parsed.persons}名）`,
+          parsed.changeMessage ? `変更時のメッセージ: ${parsed.changeMessage}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : buildNotes(parsed);
 
     const assignmentStatus = selectedSeat ? "assigned" : "unassigned";
 
@@ -366,7 +398,7 @@ warning_message: warningMessage,
       course_name_snapshot: parsed.planName || "お席のみのご予約",
       course_price_snapshot: 0,
 
-      notes: buildNotes(parsed),
+      notes: notesText,
       status: "booked",
       source: "tabelog",
 
@@ -403,8 +435,9 @@ await sendLineReservationNotice({
   start_at: startAt.toISOString(),
   seatName: selectedSeat?.name ?? "未割当",
   courseName: parsed.planName ?? "席のみ",
-  notes: buildNotes(parsed),
+  notes: notesText,
   source: "食べログ",
+  isChange,
   assignmentStatus,
   warningMessage,
 });
