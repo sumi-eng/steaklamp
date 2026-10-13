@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useForegroundRefresh } from "@/steaklamp/hooks/useForegroundRefresh";
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 
@@ -146,6 +147,9 @@ export default function SteaklampReservationHistoryPage() {
     refresh();
   }, []);
 
+  // アプリがバックグラウンドから前面に戻ったときも更新する
+  useForegroundRefresh(refresh);
+
  
   const filteredRows = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -214,9 +218,11 @@ export default function SteaklampReservationHistoryPage() {
             <button
               type="button"
               onClick={refresh}
-              className="h-11 rounded-xl border border-zinc-700 px-4 text-sm"
+              disabled={loading}
+              aria-busy={loading}
+              className="h-11 rounded-xl border border-zinc-700 px-4 text-sm disabled:cursor-not-allowed disabled:opacity-60"
             >
-              再読み込み
+              {loading ? "更新中..." : "再読み込み"}
             </button>
           </div>
         </div>

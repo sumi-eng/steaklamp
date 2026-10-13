@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import RefreshButton from "../RefreshButton";
+import { useForegroundRefresh } from "@/steaklamp/hooks/useForegroundRefresh";
 import ReservationCreateModal from "./ReservationCreateModal";
 import ReservationDetailModal from "./ReservationDetailModal";
 
@@ -136,6 +138,9 @@ export default function ReservationLedger() {
   const [reservationsForDay, setReservationsForDay] = useState<DayReservation[]>([]);
   const [loading, setLoading] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // 最後に取得に成功した日付。取得失敗時、同じ日付なら表示中の予約を消さずに残す
+  const loadedDateKeyRef = useRef<string | null>(null);
   const [selectedReservation, setSelectedReservation] =
     useState<DayReservation | null>(null);
 
@@ -217,6 +222,15 @@ const assignedReservations = useMemo(() => {
   useEffect(() => {
     let alive = true;
 
+    function failLoad() {
+      setLoadError("更新に失敗しました。もう一度お試しください");
+      // 別の日付に切り替えた直後の失敗は、前の日付の予約を残さず空にする
+      if (loadedDateKeyRef.current !== dateKey) {
+        setRows([]);
+        setReservationsForDay([]);
+      }
+    }
+
     async function loadDayReservations() {
       setLoading(true);
 
@@ -232,14 +246,14 @@ const assignedReservations = useMemo(() => {
         if (data.ok) {
           setRows(data.rows ?? []);
           setReservationsForDay(data.items ?? []);
+          loadedDateKeyRef.current = dateKey;
+          setLoadError(null);
         } else {
-          setRows([]);
-          setReservationsForDay([]);
+          failLoad();
         }
       } catch {
         if (!alive) return;
-        setRows([]);
-        setReservationsForDay([]);
+        failLoad();
       } finally {
         if (alive) setLoading(false);
       }
@@ -295,7 +309,8 @@ if (Array.isArray(rawDays)) {
 setCalendarMeta(map);
 
       } catch {
-        if (alive) setCalendarMeta({});
+        // 更新時の失敗では表示中の件数を残し、失敗したことだけを知らせる
+        if (alive) setLoadError("カレンダーの更新に失敗しました。もう一度お試しください");
       }
     }
 
@@ -358,6 +373,14 @@ async function deleteClosure(id: string) {
   await loadClosures();
   setReloadTick((v) => v + 1);
 }
+
+// 表示中の日付の予約・未割当欄・休業日・カレンダーの件数をまとめて取り直す
+function refreshNow() {
+  setReloadTick((v) => v + 1);
+}
+
+// アプリがバックグラウンドから前面に戻ったときも同じ更新をする
+useForegroundRefresh(refreshNow);
 
 function openClosureModal() {
   setClosureDate(dateKey);
@@ -484,7 +507,14 @@ function openClosureModal() {
   翌日
 </button>
 
+<RefreshButton onClick={refreshNow} loading={loading} />
+
           {loading && <div className="ml-2 text-sm text-stone-500">読み込み中...</div>}
+          {loadError && !loading && (
+            <div role="alert" className="ml-2 text-sm font-semibold text-rose-600">
+              {loadError}
+            </div>
+          )}
 
 {dayClosure && (
   <div className="w-full rounded-2xl border border-emerald-300 bg-emerald-50 px-5 py-4 text-emerald-800">

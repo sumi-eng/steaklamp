@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import RefreshButton from "../RefreshButton";
+import { useForegroundRefresh } from "@/steaklamp/hooks/useForegroundRefresh";
 import ReservationDetailModal from "./ReservationDetailModal";
 
 function formatDateKey(date: Date) {
@@ -69,6 +71,10 @@ export default function ReservationListView() {
   const [dateKey, setDateKey] = useState(formatDateKey(new Date()));
   const [items, setItems] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // 最後に取得に成功した日付。取得失敗時、同じ日付なら表示中の予約を消さずに残す
+  const loadedDateKeyRef = useRef<string | null>(null);
   const [selected, setSelected] = useState<Reservation | null>(null);
 
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -79,6 +85,11 @@ export default function ReservationListView() {
 
   useEffect(() => {
     let alive = true;
+
+    function failLoad() {
+      setLoadError("更新に失敗しました。もう一度お試しください");
+      if (loadedDateKeyRef.current !== dateKey) setItems([]);
+    }
 
     async function load() {
       setLoading(true);
@@ -107,11 +118,13 @@ export default function ReservationListView() {
               notes: r.notes,
             }))
           );
+          loadedDateKeyRef.current = dateKey;
+          setLoadError(null);
         } else {
-          setItems([]);
+          failLoad();
         }
       } catch {
-        if (alive) setItems([]);
+        if (alive) failLoad();
       } finally {
         if (alive) setLoading(false);
       }
@@ -122,7 +135,7 @@ export default function ReservationListView() {
     return () => {
       alive = false;
     };
-  }, [dateKey]);
+  }, [dateKey, reloadTick]);
 
   useEffect(() => {
     if (!isCalendarOpen) return;
@@ -169,7 +182,8 @@ export default function ReservationListView() {
 
         setCalendarMeta(map);
       } catch {
-        if (alive) setCalendarMeta({});
+        // 更新時の失敗では表示中の件数を残し、失敗したことだけを知らせる
+        if (alive) setLoadError("カレンダーの更新に失敗しました。もう一度お試しください");
       }
     }
 
@@ -178,7 +192,15 @@ export default function ReservationListView() {
     return () => {
       alive = false;
     };
-  }, [isCalendarOpen, calendarMonth]);
+  }, [isCalendarOpen, calendarMonth, reloadTick]);
+
+  // 表示中の日付の予約とカレンダーの件数を取り直す
+  function refreshNow() {
+    setReloadTick((v) => v + 1);
+  }
+
+  // アプリがバックグラウンドから前面に戻ったときも同じ更新をする
+  useForegroundRefresh(refreshNow);
 
   function formatTime(startAt: string, duration: number) {
     const s = new Date(startAt);
@@ -248,8 +270,16 @@ export default function ReservationListView() {
             >
               今日
             </button>
+
+            <RefreshButton size="sm" onClick={refreshNow} loading={loading} />
           </div>
         </div>
+
+        {loadError && !loading && (
+          <div role="alert" className="mb-3 text-sm font-semibold text-rose-600">
+            {loadError}
+          </div>
+        )}
 
         <div className="mb-4 flex gap-2">
           <button
