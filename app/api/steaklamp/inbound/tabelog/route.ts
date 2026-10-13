@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
+import { extractMailContent } from "@/steaklamp/lib/inbound/mail-body";
 import { parseTabelogReservationMail } from "@/steaklamp/lib/inbound/tabelog-parser";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
 
@@ -205,8 +206,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const textBody = String(receivedEmail?.text || receivedEmail?.html || "").trim();
-    const subject = String((receivedEmail as any)?.subject ?? "").trim();
+    const { body: textBody, subject } = extractMailContent(receivedEmail);
 
     if (!textBody) {
       return json({ ok: true, ignored: true, reason: "empty_email_body" });

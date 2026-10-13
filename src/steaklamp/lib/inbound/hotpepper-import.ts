@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
-import { sendLineReservationNotice } from "@/steaklamp/lib/lineNotify";
+import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
 import { parseHotpepperReservationMail } from "./hotpepper-parser";
 
 type SeatRow = {
@@ -205,11 +205,57 @@ export async function findSeatCandidate(args: {
 
 export async function importHotpepperReservationFromText(args: {
   rawText: string;
+  subject?: string | null;
   messageId?: string | null;
 }) {
-  const parsed = parseHotpepperReservationMail(args.rawText);
+  const subject = args.subject ?? "";
+  const parsed = parseHotpepperReservationMail(args.rawText, subject);
 
-  if (!parsed.externalId || !parsed.date || !parsed.time) {
+  // 自動処理できないメールは台帳を変更せず、ログとLINEで要確認として知らせる
+  const needsReview = async (reason: string) => {
+    console.warn(
+      "STEAKLAMP_HOTPEPPER_NEEDS_REVIEW =",
+      JSON.stringify({ reason, externalId: parsed.externalId, mailType: parsed.mailType, subject })
+    );
+    await sendLineReviewNotice({
+      source: "ホットペッパー",
+      reason,
+      externalId: parsed.externalId || null,
+      subject,
+    });
+    return {
+      ok: true as const,
+      skipped: true,
+      needsReview: true,
+      reason,
+      parsed,
+    };
+  };
+
+  // 予約の新規・変更・キャンセル以外の通知（明日の予約のお知らせ等）は台帳に触れない
+  if (parsed.mailType === "ignore") {
+    console.log("STEAKLAMP_HOTPEPPER_IGNORED_SUBJECT =", subject);
+    return {
+      ok: true as const,
+      skipped: true,
+      reason: "not_reservation_mail",
+      parsed,
+    };
+  }
+
+  if (parsed.mailType === "unknown") {
+    return needsReview("種別(新規/変更/キャンセル)を判定できないメール");
+  }
+
+  if (!parsed.externalId) {
+    return needsReview("予約依頼番号を取得できない");
+  }
+
+  // 変更・キャンセルは予約番号だけで処理できる。新規・変更は日時が必須。
+  if (parsed.mailType !== "cancel" && (!parsed.date || !parsed.time)) {
+    if (parsed.mailType === "change") {
+      return needsReview("変更メールから来店日時を読み取れない");
+    }
     return {
       ok: false as const,
       reason: "required_fields_missing",
@@ -234,7 +280,7 @@ export async function importHotpepperReservationFromText(args: {
 
   const existingRes = await supabaseAdmin
     .from("reservations")
-    .select("id, status, session_id")
+    .select("id, status, session_id, name, persons, start_at, notes")
     .eq("store_id", store.id)
     .eq("external_source", "hotpepper")
     .eq("external_reservation_id", parsed.externalId)
@@ -244,10 +290,14 @@ export async function importHotpepperReservationFromText(args: {
 
   if (parsed.mailType === "cancel") {
     if (!existingRes.data) {
+      return needsReview("キャンセル対象の予約が台帳に見つからない");
+    }
+
+    if (existingRes.data.status === "cancelled") {
       return {
         ok: true as const,
         skipped: true,
-        reason: "cancel_target_not_found",
+        reason: "already_cancelled",
         parsed,
       };
     }
@@ -256,12 +306,7 @@ export async function importHotpepperReservationFromText(args: {
       .from("reservations")
       .update({
         status: "cancelled",
-        notes: [
-          "ホットペッパー予約",
-          "キャンセル通知を受信",
-          parsed.planName ? `コース: ${parsed.planName}` : null,
-          parsed.requestText ? `ご要望事項:\n${parsed.requestText}` : null,
-        ]
+        notes: [existingRes.data.notes, "ホットペッパー: キャンセル通知を受信"]
           .filter(Boolean)
           .join("\n"),
       })
@@ -269,42 +314,37 @@ export async function importHotpepperReservationFromText(args: {
       .select("id, status")
       .single();
 
- if (updateRes.error) throw updateRes.error;
+    if (updateRes.error) throw updateRes.error;
 
-await sendLineReservationNotice({
-  name: parsed.name,
-  phone: null,
-  email: null,
-  persons: parsed.persons,
-  start_at: buildStartAt(parsed.date, parsed.time).toISOString(),
-  seatName: null,
-  courseName: parsed.planName,
-  notes: parsed.requestText ?? null,
-  source: "キャンセル",
-});
+    await sendLineReservationNotice({
+      name: existingRes.data.name ?? parsed.name,
+      phone: null,
+      email: null,
+      persons: existingRes.data.persons ?? parsed.persons,
+      start_at: existingRes.data.start_at,
+      seatName: null,
+      courseName: parsed.planName,
+      notes: null,
+      source: "キャンセル",
+    });
 
-return {
-  ok: true as const,
-  skipped: false,
-  action: "cancelled",
-  reservation: updateRes.data,
-  parsed,
-};
-
+    return {
+      ok: true as const,
+      skipped: false,
+      action: "cancelled",
+      reservation: updateRes.data,
+      parsed,
+    };
   }
 
- const importableMailTypes = ["new", "request", "change", "modify", "updated", "unknown"];
-
-if (!importableMailTypes.includes(String(parsed.mailType))) {
-  return {
-    ok: true as const,
-    skipped: true,
-    reason: "unsupported_mail_type",
-    mailType: parsed.mailType,
-    parsed,
-  };
-}
-
+  if (parsed.mailType === "change") {
+    if (!existingRes.data) {
+      return needsReview("変更対象の予約が台帳に見つからない（新規作成は行いません）");
+    }
+    if (existingRes.data.status === "cancelled") {
+      return needsReview("キャンセル済みの予約に変更メールが届いた");
+    }
+  }
 
   const persons = Number(parsed.persons ?? 0);
   if (!Number.isFinite(persons) || persons <= 0) {
@@ -363,6 +403,17 @@ const warningMessage = selectedSeat
 
   ].filter(Boolean);
 
+  // 変更メールには要望・アレルギー等が載らないため、既存の備考を消さずに追記する
+  const isChange = parsed.mailType === "change";
+  const notesText = isChange
+    ? [
+        existingRes.data?.notes,
+        `ホットペッパー: 変更通知を受信（来店日時: ${parsed.prevDateTime || "-"} → ${parsed.date} ${parsed.time} / 人数: ${parsed.persons}名）`,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : noteLines.join("\n");
+
   const payload = {
     store_id: store.id,
     seat_id: selectedSeat?.id ?? null,
@@ -377,7 +428,7 @@ const warningMessage = selectedSeat
     course_name_snapshot: course.courseName,
     course_price_snapshot: course.coursePrice,
     counter_acceptable: counterOk,
-    notes: noteLines.join("\n"),
+    notes: notesText,
 assignment_status: assignmentStatus,
 warning_message: warningMessage,
 
@@ -417,8 +468,9 @@ await sendLineReservationNotice({
   start_at: startAt.toISOString(),
   seatName: selectedSeat?.name ?? "未割当",
   courseName: course.courseName,
-  notes: noteLines.join("\n"),
+  notes: notesText,
   source: "ホットペッパー",
+  isChange,
   assignmentStatus,
   warningMessage,
 });

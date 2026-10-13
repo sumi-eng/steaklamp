@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { importHotpepperReservationFromText } from "@/steaklamp/lib/inbound/hotpepper-import";
-import Encoding from "encoding-japanese";
+import { extractMailContent } from "@/steaklamp/lib/inbound/mail-body";
 
 
 export const runtime = "nodejs";
@@ -68,44 +68,10 @@ if (!toText.includes("hp-steak@phecoreer.resend.app")) {
 }
 
 
-    let textBody = String(
-  receivedEmail?.text || receivedEmail?.html || ""
-).trim();
+    const { body: textBody, subject } = extractMailContent(receivedEmail);
 
-function decodeHotpepperBody(raw: string) {
-  if (!raw) return raw;
-
-  const looksGarbled =
-    raw.includes("\\u001b") ||
-    raw.includes("\u001b") ||
-    raw.includes("$B") ||
-    raw.includes("(B");
-
-  if (!looksGarbled) return raw;
-
-  try {
-    const escaped = raw
-      .replace(/\\u001b/g, "\u001b")
-      .replace(/\\n/g, "\n")
-      .replace(/\\"/g, '"');
-
-    const codes = Encoding.stringToCode(escaped);
-    const unicodeArray = Encoding.convert(codes, {
-      from: "JIS",
-      to: "UNICODE",
-    });
-
-    return Encoding.codeToString(unicodeArray);
-  } catch (e) {
-    console.error("STEAKLAMP_HOTPEPPER_DECODE_FAILED =", e);
-    return raw;
-  }
-}
-
-textBody = decodeHotpepperBody(textBody).trim();
-
-console.log("STEAKLAMP_TEXT_BODY_HEAD =", textBody.slice(0, 1000));
-
+    console.log("STEAKLAMP_SUBJECT =", subject);
+    console.log("STEAKLAMP_TEXT_BODY_HEAD =", textBody.slice(0, 1000));
 
     if (!textBody) {
       console.warn("STEAKLAMP_RESEND_RECEIVED_EMPTY_BODY =", emailId);
@@ -118,6 +84,7 @@ console.log("STEAKLAMP_TEXT_BODY_HEAD =", textBody.slice(0, 1000));
 
     const result = await importHotpepperReservationFromText({
       rawText: textBody,
+      subject,
       messageId:
         (receivedEmail as any)?.headers?.["message-id"] ??
         (receivedEmail as any)?.messageId ??

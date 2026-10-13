@@ -8,6 +8,7 @@ type LineNotifyReservation = {
   courseName?: string | null;
   notes?: string | null;
   source?: string | null;
+  isChange?: boolean;
 assignmentStatus?: string | null;
 warningMessage?: string | null;
 
@@ -50,6 +51,10 @@ const needsAttention =
 const text = [
   isCancel
     ? "【Lamp】予約がキャンセルされました"
+    : reservation.isChange
+      ? needsAttention
+        ? "【要確認】SteakLamp 予約が変更されました"
+        : "【Lamp】予約が変更されました"
     : needsAttention
       ? "【要確認】SteakLamp 予約が入りました"
       : "【Lamp】新しい予約が入りました",

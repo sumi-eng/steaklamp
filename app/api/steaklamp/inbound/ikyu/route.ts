@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import Encoding from "encoding-japanese";
+import { extractMailContent } from "@/steaklamp/lib/inbound/mail-body";
 import { importIkyuReservationFromText } from "@/steaklamp/lib/inbound/ikyu-import";
 
 export const runtime = "nodejs";
@@ -10,48 +10,6 @@ const IKYU_INBOUND_ADDRESS =
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, { status });
-}
-
-// ISO-2022-JP のまま届いた本文を Unicode に戻す
-function decodeJisBody(raw: string) {
-  if (!raw) return raw;
-
-  const looksGarbled =
-    raw.includes("\\u001b") ||
-    raw.includes("\u001b") ||
-    raw.includes("$B") ||
-    raw.includes("(B");
-
-  if (!looksGarbled) return raw;
-
-  try {
-    const escaped = raw
-      .replace(/\\u001b/g, "\u001b")
-      .replace(/\\n/g, "\n")
-      .replace(/\\"/g, '"');
-
-    const codes = Encoding.stringToCode(escaped);
-    const unicodeArray = Encoding.convert(codes, {
-      from: "JIS",
-      to: "UNICODE",
-    });
-
-    return Encoding.codeToString(unicodeArray);
-  } catch (e) {
-    console.error("STEAKLAMP_IKYU_DECODE_FAILED =", e);
-    return raw;
-  }
-}
-
-function htmlToText(html: string) {
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|tr|li)>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
 }
 
 export async function POST(req: NextRequest) {
@@ -100,12 +58,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const rawBody = receivedEmail?.text
-      ? String(receivedEmail.text)
-      : htmlToText(String(receivedEmail?.html ?? ""));
-
-    const textBody = decodeJisBody(rawBody.trim()).trim();
-    const subject = decodeJisBody(String((receivedEmail as any)?.subject ?? "")).trim();
+    const { body: textBody, subject } = extractMailContent(receivedEmail);
 
     console.log("STEAKLAMP_IKYU_SUBJECT =", subject);
     console.log("STEAKLAMP_IKYU_TEXT_BODY_HEAD =", textBody.slice(0, 1000));
