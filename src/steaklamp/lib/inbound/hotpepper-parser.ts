@@ -84,6 +84,29 @@ export function detectHotpepperMailType(
   return byBody;
 }
 
+const POINT_NOTE_PREFIX = "ポイント利用：";
+
+// 備考に入れるポイント利用の行。0ポイント・不明のときは入れない。
+export function buildPointNoteLine(pointsUsed: number | null | undefined) {
+  return pointsUsed && pointsUsed > 0
+    ? `${POINT_NOTE_PREFIX}${pointsUsed.toLocaleString("ja-JP")}ポイント`
+    : null;
+}
+
+// 変更メール用: 既存備考の「ポイント利用：」行を最新の値に差し替える（要望・アレルギー等は残す）。
+// メールにポイント利用額が無い(null)ときは既存備考をそのまま返す。
+export function applyPointNote(existingNotes: string | null | undefined, pointsUsed: number | null) {
+  const existing = String(existingNotes ?? "");
+  if (pointsUsed === null) return existing;
+
+  const kept = existing
+    .split("\n")
+    .filter((line) => !line.startsWith(POINT_NOTE_PREFIX));
+  const pointLine = buildPointNoteLine(pointsUsed);
+
+  return [...kept, pointLine].filter(Boolean).join("\n");
+}
+
 export function parseHotpepperReservationMail(text: string, subject = "") {
   const normalized = text.replace(/\r\n/g, "\n");
 
@@ -128,6 +151,11 @@ export function parseHotpepperReservationMail(text: string, subject = "") {
 
   const personsRaw = get("人数");
   const personsText = afterArrow(personsRaw);
+
+  // 「■ポイント利用額：500ポイント」（変更時は「500ポイント → 1000ポイント」）。変更後の値を使う。
+  const pointsRaw = afterArrow(get("ポイント利用額"));
+  const pointsDigits = pointsRaw.match(/[\d,]+/)?.[0]?.replace(/,/g, "") ?? "";
+  const pointsUsed = pointsDigits ? Number(pointsDigits) : null;
   const personsMatch = personsText.match(/(\d+)/);
 
   const requestText =
@@ -148,6 +176,7 @@ const questionAnswerText = extractQuestionAnswerText(normalized);
     time,
     prevDateTime,
     prevPersonsText: beforeArrow(personsRaw),
+    pointsUsed,
     persons: personsMatch ? Number(personsMatch[1]) : 0,
     planName: get("コース"),
     seatLabel: get("席情報"),

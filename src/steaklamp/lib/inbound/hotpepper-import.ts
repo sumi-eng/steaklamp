@@ -1,6 +1,10 @@
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
-import { parseHotpepperReservationMail } from "./hotpepper-parser";
+import {
+  applyPointNote,
+  buildPointNoteLine,
+  parseHotpepperReservationMail,
+} from "./hotpepper-parser";
 
 type SeatRow = {
   id: string;
@@ -400,6 +404,7 @@ const warningMessage = selectedSeat
     parsed.planName ? `メールコース名: ${parsed.planName}` : null,
     parsed.questionAnswerText ? `苦手なもの・アレルギー:${parsed.questionAnswerText}` : null,
   parsed.requestText ? `ご要望事項:\n${parsed.requestText}` : null,
+    buildPointNoteLine(parsed.pointsUsed),
 
   ].filter(Boolean);
 
@@ -407,7 +412,7 @@ const warningMessage = selectedSeat
   const isChange = parsed.mailType === "change";
   const notesText = isChange
     ? [
-        existingRes.data?.notes,
+        applyPointNote(existingRes.data?.notes, parsed.pointsUsed),
         `ホットペッパー: 変更通知を受信（来店日時: ${parsed.prevDateTime || "-"} → ${parsed.date} ${parsed.time} / 人数: ${parsed.persons}名）`,
       ]
         .filter(Boolean)

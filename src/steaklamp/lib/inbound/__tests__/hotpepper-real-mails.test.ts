@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseHotpepperReservationMail } from "../hotpepper-parser";
+import {
+  applyPointNote,
+  buildPointNoteLine,
+  parseHotpepperReservationMail,
+} from "../hotpepper-parser";
 
 // 実メール（個人情報は伏せ済み）。
 //  - 新規:     2026-10-09 受信  件名「[即予約]予約が確定しました」
@@ -153,5 +157,67 @@ describe("件名による判定", () => {
 
   it("件名と本文が食い違う場合は unknown（要確認）", () => {
     expect(parseHotpepperReservationMail(CANCEL_MAIL, S_NEW).mailType).toBe("unknown");
+  });
+});
+
+describe("件名の末尾に注記が付く場合（前方一致）", () => {
+  it.each([
+    ["[即予約]予約が確定しました　＊ポイント利用予約です", "new"],
+    ["[即予約]予約内容が変更されました　＊ポイント利用予約です", "change"],
+    ["[即予約]予約がキャンセルされました　＊ポイント利用予約です", "cancel"],
+  ])("%s → %s", (subject, expected) => {
+    expect(parseHotpepperReservationMail("■予約依頼番号：SE1", subject).mailType).toBe(expected);
+  });
+});
+
+describe("ポイント利用", () => {
+  // ※ポイント利用予約の実メールは未入手。実メールの「■ポイント利用額：0ポイント」の書式を元にした暫定サンプル。
+  const withPoints = (mail: string, from: string, to: string) =>
+    mail.replace(`■ポイント利用額：${from}`, `■ポイント利用額：${to}`);
+
+  it("0ポイントは備考に入れない", () => {
+    const p = parseHotpepperReservationMail(CHANGE_MAIL, S_CHANGE);
+    expect(p.pointsUsed).toBe(0);
+    expect(buildPointNoteLine(p.pointsUsed)).toBeNull();
+  });
+
+  it("1ポイント以上は「ポイント利用：〇〇ポイント」にする", () => {
+    const mail = withPoints(CHANGE_MAIL, "0ポイント", "500ポイント");
+    const p = parseHotpepperReservationMail(mail, S_CHANGE);
+    expect(p.pointsUsed).toBe(500);
+    expect(buildPointNoteLine(p.pointsUsed)).toBe("ポイント利用：500ポイント");
+  });
+
+  it("桁区切りのあるポイントを読める", () => {
+    const mail = withPoints(CHANGE_MAIL, "0ポイント", "1,200ポイント");
+    const p = parseHotpepperReservationMail(mail, S_CHANGE);
+    expect(p.pointsUsed).toBe(1200);
+    expect(buildPointNoteLine(p.pointsUsed)).toBe("ポイント利用：1,200ポイント");
+  });
+
+  it("変更メールの矢印は変更後の値を使う", () => {
+    const mail = withPoints(CHANGE_MAIL, "0ポイント", "500ポイント → 1000ポイント");
+    expect(parseHotpepperReservationMail(mail, S_CHANGE).pointsUsed).toBe(1000);
+  });
+
+  it("ポイント利用額の行が無ければ null", () => {
+    expect(parseHotpepperReservationMail("■予約依頼番号：SE1", S_NEW).pointsUsed).toBeNull();
+  });
+
+  it("変更時: 既存の備考（要望・アレルギー）を残し、ポイントの行を最新に差し替える", () => {
+    const existing = "ホットペッパー予約\n苦手なもの・アレルギー:エビ\nポイント利用：500ポイント";
+    expect(applyPointNote(existing, 1000)).toBe(
+      "ホットペッパー予約\n苦手なもの・アレルギー:エビ\nポイント利用：1,000ポイント"
+    );
+  });
+
+  it("変更時: 0ポイントになったら古いポイントの行を外す。他の備考は残す", () => {
+    const existing = "ホットペッパー予約\n苦手なもの・アレルギー:エビ\nポイント利用：500ポイント";
+    expect(applyPointNote(existing, 0)).toBe("ホットペッパー予約\n苦手なもの・アレルギー:エビ");
+  });
+
+  it("変更時: メールにポイント利用額が無ければ既存の備考をそのまま返す", () => {
+    const existing = "ホットペッパー予約\nポイント利用：500ポイント";
+    expect(applyPointNote(existing, null)).toBe(existing);
   });
 });
