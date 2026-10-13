@@ -1,4 +1,4 @@
-export type IkyuMailType = "new" | "change" | "cancel" | "unknown";
+export type IkyuMailType = "new" | "change" | "cancel" | "ignore" | "unknown";
 
 function normalizeMultilineValue(value: string) {
   return value
@@ -36,12 +36,50 @@ function getField(text: string, label: string) {
   return normalizeMultilineValue(lines.map((line) => cleanLine(line)).join("\n"));
 }
 
+// 予約ではない通知（件名で判定）。「レストラン情報変更通知」は「変更」を含むが予約変更ではない。
+const IGNORED_SUBJECTS = [
+  /レストラン情報変更通知/,
+  /ご精算のご案内/,
+  /送信テスト/,
+  /お打ち合わせのお礼/,
+];
+
+// 件名での判定（例: 【新規_現地決済】… / 【取消】… / 【変更】…）。
+// 新規は決済方法で件名が変わるため「【新規_」「【新規】」の先頭一致で扱う。
+function detectTypeFromSubject(subject: string): IkyuMailType | null {
+  if (IGNORED_SUBJECTS.some((re) => re.test(subject))) return "ignore";
+
+  const s = subject.trim();
+  if (/^【(?:取消|キャンセル)/.test(s)) return "cancel";
+  if (/^【変更/.test(s)) return "change";
+  if (/^【新規/.test(s)) return "new";
+  return null;
+}
+
+// 本文の見出し行（◆【新規】予約受付のお知らせ◆ など）での判定。
+// コメント欄などに「変更」「キャンセル」が入ることがあるため、見出し行だけを見る。
+function detectTypeFromBody(text: string): IkyuMailType {
+  const m = text.slice(0, 600).match(/^◆[^\n]*?【(新規|取消|キャンセル|変更)[^】]*】/m);
+  if (!m) return "unknown";
+  if (m[1] === "取消" || m[1] === "キャンセル") return "cancel";
+  if (m[1] === "変更") return "change";
+  return "new";
+}
+
+// 件名を優先して判定する。件名が一覧に無ければ本文の見出し行で判定し、
+// どちらも判定できない・食い違う場合は unknown（要確認）。
 function detectType(subject: string, text: string): IkyuMailType {
-  const head = `${subject}\n${text.slice(0, 500)}`;
-  if (subject.includes("キャンセル") || head.includes("【キャンセル】")) return "cancel";
-  if (head.includes("【変更】")) return "change";
-  if (head.includes("【新規】")) return "new";
-  return "unknown";
+  const bySubject = detectTypeFromSubject(subject);
+  if (bySubject === "ignore") return "ignore";
+
+  const byBody = detectTypeFromBody(text);
+
+  if (bySubject) {
+    if (byBody !== "unknown" && byBody !== bySubject) return "unknown";
+    return bySubject;
+  }
+
+  return byBody;
 }
 
 function parseDateTime(value: string) {
@@ -87,10 +125,14 @@ function parseName(value: string) {
   return { name, kana };
 }
 
-function parseExternalId(text: string) {
+function parseExternalId(text: string, subject = "") {
   const field = getField(text, "予約番号");
-  const m = field.match(/IR\d+/) ?? text.match(/IR\d{6,}/);
-  return m?.[0] ?? field;
+  // 本文から読めない場合は件名の「[予約NO：IR…]」を使う
+  const m =
+    field.match(/IR\d+/) ??
+    text.match(/IR\d{6,}/) ??
+    subject.match(/予約NO[：:]\s*(IR\d+)/);
+  return m?.[1] ?? m?.[0] ?? field;
 }
 
 export function parseIkyuReservationMail(text: string, subject = "") {
@@ -98,23 +140,27 @@ export function parseIkyuReservationMail(text: string, subject = "") {
 
   const { date, time } = parseDateTime(getField(normalized, "来店日時"));
   const { name, kana } = parseName(getField(normalized, "来店代表者氏名"));
+  const personsDetail = getField(normalized, "来店人数") || getField(normalized, "利用人数");
 
   return {
     mailType: detectType(subject, normalized),
-    externalId: parseExternalId(normalized),
+    externalId: parseExternalId(normalized, subject),
     name,
     kana,
     phone: getField(normalized, "来店代表者連絡先").replace(/[^\d+-]/g, ""),
     date,
     time,
     durationMinutes: parseDurationMinutes(getField(normalized, "滞在時間（目安）") || getField(normalized, "滞在時間")),
-    persons: parsePersons(getField(normalized, "来店人数")),
-    personsDetail: getField(normalized, "来店人数"),
+    // 新規は「来店人数」、取消は「利用人数」
+    persons: parsePersons(personsDetail),
+    personsDetail,
     paymentMethod: getField(normalized, "決済方法"),
     planNo: getField(normalized, "プランNo"),
-    planName: getField(normalized, "プラン"),
+    // 新規は「プラン」、取消は「予約プラン」
+    planName: getField(normalized, "プラン") || getField(normalized, "予約プラン"),
     seatLabel: getField(normalized, "席管理名称"),
     comment: getField(normalized, "コメント"),
+    cancelReason: getField(normalized, "キャンセル理由"),
     rawText: normalized,
   };
 }

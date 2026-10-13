@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
-import { sendLineReservationNotice } from "@/steaklamp/lib/lineNotify";
+import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
 import { findSeatCandidate } from "./hotpepper-import";
 import { parseIkyuReservationMail } from "./ikyu-parser";
 
@@ -45,9 +45,10 @@ function inferCourse(planNameRaw: string | null | undefined) {
   };
 }
 
-function inferCounterOk(parsed: { seatLabel?: string | null; comment?: string | null }) {
-  const text = `${parsed.seatLabel ?? ""}\n${parsed.comment ?? ""}`;
-  return text.includes("カウンター");
+// カウンター希望の判定は席管理名称だけを見る。
+// コメント欄には「カウンターをテーブルに変更してください」のような逆の依頼が入ることがあるため使わない。
+function inferCounterOk(parsed: { seatLabel?: string | null }) {
+  return String(parsed.seatLabel ?? "").includes("カウンター");
 }
 
 export async function importIkyuReservationFromText(args: {
@@ -55,9 +56,54 @@ export async function importIkyuReservationFromText(args: {
   subject?: string | null;
   messageId?: string | null;
 }) {
-  const parsed = parseIkyuReservationMail(args.rawText, args.subject ?? "");
+  const subject = args.subject ?? "";
+  const parsed = parseIkyuReservationMail(args.rawText, subject);
 
-  if (!parsed.externalId || !parsed.date || !parsed.time) {
+  // 自動処理できないメールは台帳を変更せず、ログとLINEで要確認として知らせる
+  const needsReview = async (reason: string) => {
+    console.warn(
+      "STEAKLAMP_IKYU_NEEDS_REVIEW =",
+      JSON.stringify({ reason, externalId: parsed.externalId, mailType: parsed.mailType, subject })
+    );
+    await sendLineReviewNotice({
+      source: "一休",
+      reason,
+      externalId: parsed.externalId || null,
+      subject,
+    });
+    return {
+      ok: true as const,
+      skipped: true,
+      needsReview: true,
+      reason,
+      parsed,
+    };
+  };
+
+  // 予約以外の通知（レストラン情報変更通知・ご精算のご案内等）は台帳に触れない
+  if (parsed.mailType === "ignore") {
+    console.log("STEAKLAMP_IKYU_IGNORED_SUBJECT =", subject);
+    return {
+      ok: true as const,
+      skipped: true,
+      reason: "not_reservation_mail",
+      parsed,
+    };
+  }
+
+  if (parsed.mailType === "unknown") {
+    return needsReview("種別(新規/変更/取消)を判定できないメール");
+  }
+
+  if (!parsed.externalId) {
+    return needsReview("予約番号を取得できない");
+  }
+
+  // 取消は予約番号だけで処理できる。新規・変更は日時が必須。
+  if (parsed.mailType !== "cancel" && (!parsed.date || !parsed.time)) {
+    if (parsed.mailType === "change") {
+      return needsReview("変更メールから来店日時を読み取れない");
+    }
     return {
       ok: false as const,
       reason: "required_fields_missing",
@@ -82,7 +128,7 @@ export async function importIkyuReservationFromText(args: {
 
   const existingRes = await supabaseAdmin
     .from("reservations")
-    .select("id, status, session_id")
+    .select("id, status, session_id, name, persons, start_at, notes")
     .eq("store_id", store.id)
     .eq("external_source", "ikyu")
     .eq("external_reservation_id", parsed.externalId)
@@ -92,10 +138,14 @@ export async function importIkyuReservationFromText(args: {
 
   if (parsed.mailType === "cancel") {
     if (!existingRes.data) {
+      return needsReview("取消対象の予約が台帳に見つからない");
+    }
+
+    if (existingRes.data.status === "cancelled") {
       return {
         ok: true as const,
         skipped: true,
-        reason: "cancel_target_not_found",
+        reason: "already_cancelled",
         parsed,
       };
     }
@@ -105,10 +155,9 @@ export async function importIkyuReservationFromText(args: {
       .update({
         status: "cancelled",
         notes: [
-          "一休予約",
-          "キャンセル通知を受信",
-          parsed.planName ? `プラン: ${parsed.planName}` : null,
-          parsed.comment ? `コメント:\n${parsed.comment}` : null,
+          existingRes.data.notes,
+          "一休: 取消通知を受信",
+          parsed.cancelReason ? `キャンセル理由: ${parsed.cancelReason}` : null,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -120,14 +169,14 @@ export async function importIkyuReservationFromText(args: {
     if (updateRes.error) throw updateRes.error;
 
     await sendLineReservationNotice({
-      name: parsed.name,
+      name: existingRes.data.name ?? parsed.name,
       phone: parsed.phone || null,
       email: null,
-      persons: parsed.persons,
-      start_at: buildStartAt(parsed.date, parsed.time).toISOString(),
+      persons: existingRes.data.persons ?? parsed.persons,
+      start_at: existingRes.data.start_at,
       seatName: null,
       courseName: parsed.planName,
-      notes: parsed.comment || null,
+      notes: parsed.cancelReason ? `キャンセル理由: ${parsed.cancelReason}` : null,
       source: "キャンセル",
     });
 
@@ -138,6 +187,15 @@ export async function importIkyuReservationFromText(args: {
       reservation: updateRes.data,
       parsed,
     };
+  }
+
+  if (parsed.mailType === "change") {
+    if (!existingRes.data) {
+      return needsReview("変更対象の予約が台帳に見つからない（新規作成は行いません）");
+    }
+    if (existingRes.data.status === "cancelled") {
+      return needsReview("取消済みの予約に変更メールが届いた");
+    }
   }
 
   const persons = Number(parsed.persons ?? 0);
@@ -197,6 +255,18 @@ export async function importIkyuReservationFromText(args: {
     parsed.comment ? `コメント:\n${parsed.comment}` : null,
   ].filter(Boolean);
 
+  // 変更は既存の備考を消さずに追記する（新規メールの備考内容を失わないため）
+  const isChange = parsed.mailType === "change";
+  const notesText = isChange
+    ? [
+        existingRes.data?.notes,
+        `一休: 変更通知を受信（来店日時: ${parsed.date} ${parsed.time} / 人数: ${persons}名）`,
+        parsed.comment ? `コメント:\n${parsed.comment}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : noteLines.join("\n");
+
   const payload = {
     store_id: store.id,
     seat_id: selectedSeat?.id ?? null,
@@ -211,7 +281,7 @@ export async function importIkyuReservationFromText(args: {
     course_name_snapshot: course.courseName,
     course_price_snapshot: course.coursePrice,
     counter_acceptable: counterOk,
-    notes: noteLines.join("\n"),
+    notes: notesText,
     assignment_status: assignmentStatus,
     warning_message: warningMessage,
 
@@ -232,8 +302,9 @@ export async function importIkyuReservationFromText(args: {
     start_at: startAt.toISOString(),
     seatName: selectedSeat?.name ?? "未割当",
     courseName: course.courseName,
-    notes: noteLines.join("\n"),
+    notes: notesText,
     source: "一休",
+    isChange,
     assignmentStatus,
     warningMessage,
   };
