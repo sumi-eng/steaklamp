@@ -92,3 +92,51 @@ const text = [
     console.error("LINE notify failed", res.status, detail);
   }
 }
+
+// 取り込みメールを自動処理できなかった場合の「要確認」通知
+export async function sendLineReviewNotice(args: {
+  source: string;
+  reason: string;
+  externalId?: string | null;
+  subject?: string | null;
+  detail?: string | null;
+}) {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const to =
+    process.env.LINE_STEAKLAMP_TO_ID ||
+    process.env.LINE_TO_GROUP_ID ||
+    process.env.LINE_TO_USER_ID;
+
+  if (!token || !to) {
+    console.warn("LINE env is missing");
+    return;
+  }
+
+  const text = [
+    "【要確認】予約メールを自動反映できませんでした",
+    "",
+    `経路：${args.source}`,
+    `理由：${args.reason}`,
+    args.externalId ? `予約番号：${args.externalId}` : null,
+    args.subject ? `件名：${args.subject}` : null,
+    args.detail ? args.detail : null,
+    "",
+    "予約台帳は変更していません。メールを確認して手動で対応してください。",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const res = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ to, messages: [{ type: "text", text }] }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    console.error("LINE review notify failed", res.status, detail);
+  }
+}

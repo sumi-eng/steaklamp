@@ -1,4 +1,4 @@
-export type TabelogMailType = "new" | "cancel" | "unknown";
+export type TabelogMailType = "new" | "change" | "cancel" | "unknown";
 
 function clean(value: string) {
   return String(value ?? "")
@@ -42,9 +42,13 @@ function getBlockValue(text: string, label: string) {
   return clean(m?.[1] ?? "");
 }
 
-function detectType(text: string): TabelogMailType {
+// ※変更・キャンセルの判定語は実メール未確認のため暫定。件名と本文先頭のみを見る。
+function detectType(subject: string, text: string): TabelogMailType {
   if (text.includes("新しい予約が入りました")) return "new";
-  if (text.includes("キャンセル") && text.includes("食べログ")) return "cancel";
+
+  const head = `${subject}\n${text.slice(0, 500)}`;
+  if (head.includes("キャンセル")) return "cancel";
+  if (head.includes("変更")) return "change";
   return "unknown";
 }
 
@@ -78,7 +82,7 @@ function normalizeSeatLabel(value: string) {
   return clean(value);
 }
 
-export function parseTabelogReservationMail(text: string) {
+export function parseTabelogReservationMail(text: string, subject = "") {
   const normalized = String(text ?? "").replace(/\r\n/g, "\n");
 
   const dateRaw = getLineValue(normalized, "日付");
@@ -92,7 +96,7 @@ export function parseTabelogReservationMail(text: string) {
     "";
 
   return {
-    mailType: detectType(normalized),
+    mailType: detectType(subject, normalized),
     externalId: parseExternalId(normalized),
     reservationRoute: "食べログ",
     name: normalizeName(getLineValue(normalized, "お名前")) || "食べログ予約",
