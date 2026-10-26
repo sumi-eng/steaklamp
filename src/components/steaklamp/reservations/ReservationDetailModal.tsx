@@ -7,6 +7,10 @@ type SeatCandidate = {
   name: string;
   capacityLabel: string;
   physicalSeats: string;
+  kind?: "table" | "counter";
+  free?: boolean;
+  fitsPersons?: boolean;
+  conflictWith?: string | null;
 };
 
 type ReservationDetail = {
@@ -75,56 +79,76 @@ const [coursePrice, setCoursePrice] = useState<number | null>(
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  async function loadSeatCandidates() {
-    setLoadingSeats(true);
-
-    try {
-      const res = await fetch("/api/steaklamp/seats/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          persons,
-          startAt: `${startAt}:00+09:00`,
-          duration: durationMinutes,
-          counterOk: true,
-        }),
-      });
-
-      const data = await res.json();
-
-      const loaded: SeatCandidate[] = data.ok ? data.seats ?? [] : [];
-
-      const existsCurrent = loaded.some((s) => s.id === reservation.seatId);
-
-      if (!existsCurrent) {
-        loaded.unshift({
-          id: reservation.seatId,
-          name: reservation.seatName,
-          capacityLabel: "現在の席",
-          physicalSeats: reservation.seatName,
-        });
-      }
-
-      setCandidates(loaded);
-    } finally {
-      setLoadingSeats(false);
-    }
-  }
-
+  // 人数・日時・滞在分数に合わせて、席の候補（空き状況つき）を自動で読み込む
   useEffect(() => {
-    setCandidates([]);
-  }, [persons, startAt, durationMinutes]);
+    let cancelled = false;
+
+    async function load() {
+      if (!startAt || !persons || !durationMinutes) return;
+      setLoadingSeats(true);
+
+      try {
+        const res = await fetch("/api/steaklamp/seats/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            persons,
+            startAt: `${startAt}:00+09:00`,
+            duration: durationMinutes,
+            counterOk: true,
+            includeAll: true,
+            excludeReservationId: reservation.id,
+          }),
+        });
+
+        const data = await res.json();
+        if (cancelled) return;
+        setCandidates(data.ok ? data.seats ?? [] : []);
+      } catch {
+        if (!cancelled) setCandidates([]);
+      } finally {
+        if (!cancelled) setLoadingSeats(false);
+      }
+    }
+
+    const timer = setTimeout(load, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [persons, startAt, durationMinutes, reservation.id]);
+
+  const selectedCandidate = candidates.find((c) => c.id === seatId) ?? null;
 
   async function handleUpdate() {
+    if (!seatId) {
+      alert("席を選んでください");
+      return;
+    }
+
+    // 人数に合わない席は、確認したうえで変更できる
+    let confirmCapacityMismatch = false;
+    if (selectedCandidate && selectedCandidate.fitsPersons === false) {
+      if (
+        !confirm(
+          `${selectedCandidate.name}（${selectedCandidate.capacityLabel}）は${persons}名には合わない席です。このまま変更しますか？`
+        )
+      ) {
+        return;
+      }
+      confirmCapacityMismatch = true;
+    }
+
     setSaving(true);
 
     try {
-      const res = await fetch("/api/steaklamp/reservations/update", {
+      const send = () => fetch("/api/steaklamp/reservations/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: reservation.id,
           seatId,
+          confirmCapacityMismatch,
           name,
           phone,
           email,
@@ -138,7 +162,17 @@ course_price_snapshot: coursePrice,
         }),
       });
 
-      const data = await res.json();
+      let res = await send();
+      let data = await res.json();
+
+      // 候補を読み込む前に保存した場合など、サーバー側で定員外と判定されたときも確認する
+      if (data.error === "persons_out_of_range") {
+        if (!confirm(`${data.detail}
+このまま変更しますか？`)) return;
+        confirmCapacityMismatch = true;
+        res = await send();
+        data = await res.json();
+      }
 
       if (!res.ok || !data.ok) {
         alert(data.detail || data.error || "変更に失敗しました");
@@ -289,28 +323,55 @@ course_price_snapshot: coursePrice,
               <div className="mb-1 text-sm font-bold text-stone-700">席</div>
               <select
                 value={seatId}
-                onFocus={loadSeatCandidates}
-                onClick={loadSeatCandidates}
                 onChange={(e) => setSeatId(e.target.value)}
                 className="w-full rounded-2xl border border-stone-300 px-4 py-3"
               >
-                <option value={reservation.seatId}>
-                  {reservation.seatName}（現在）
-                </option>
+                {!seatId && <option value="">席を選択してください</option>}
+                {!candidates.some((c) => c.id === reservation.seatId) && reservation.seatId && (
+                  <option value={reservation.seatId}>{reservation.seatName}（現在）</option>
+                )}
 
-                {candidates
-                  .filter((s) => s.id !== reservation.seatId)
-                  .map((seat) => (
-                    <option key={seat.id} value={seat.id}>
-                      {seat.name}（{seat.capacityLabel}） {seat.physicalSeats}
-                    </option>
-                  ))}
+                {(["table", "counter"] as const).map((kind) => (
+                  <optgroup key={kind} label={kind === "table" ? "テーブル席" : "カウンター席"}>
+                    {candidates
+                      .filter((seat) => (seat.kind ?? "table") === kind)
+                      .map((seat) => {
+                        const isCurrent = seat.id === reservation.seatId;
+                        const blocked = seat.free === false;
+                        const label = [
+                          seat.name,
+                          `（${seat.capacityLabel}）`,
+                          seat.physicalSeats !== seat.name ? ` ${seat.physicalSeats}` : "",
+                          isCurrent ? " 現在" : "",
+                          blocked ? ` ×予約済み（${seat.conflictWith}様）` : "",
+                          !blocked && seat.fitsPersons === false ? " ⚠定員外" : "",
+                        ].join("");
+
+                        return (
+                          <option key={seat.id} value={seat.id} disabled={blocked && !isCurrent}>
+                            {label}
+                          </option>
+                        );
+                      })}
+                  </optgroup>
+                ))}
               </select>
+
+              {selectedCandidate && selectedCandidate.free === false && (
+                <div className="mt-1 text-xs font-bold text-red-600">
+                  この席は同じ時間帯に別の予約があるため、変更できません。
+                </div>
+              )}
+              {selectedCandidate && selectedCandidate.free !== false && selectedCandidate.fitsPersons === false && (
+                <div className="mt-1 text-xs font-bold text-amber-600">
+                  {persons}名には合わない席です（{selectedCandidate.capacityLabel}）。変更時に確認が出ます。
+                </div>
+              )}
 
               <div className="mt-1 text-xs text-stone-500">
                 {loadingSeats
                   ? "候補席を読み込み中..."
-                  : "人数・日時・滞在分数に合う席候補が表示されます。"}
+                  : "同じ時間帯に空いている席を選べます。予約済みの席は選べません。"}
               </div>
             </div>
 

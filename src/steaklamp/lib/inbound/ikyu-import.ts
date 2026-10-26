@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
 import { findSeat } from "./hotpepper-import";
 import { detectSeatKind } from "./hotpepper-parser";
-import { noSeatMessage } from "./seat-allocation";
+import { capacityMismatchMessage, noSeatMessage } from "./seat-allocation";
 import { parseIkyuReservationMail } from "./ikyu-parser";
 
 function buildStartAt(date: string, time: string) {
@@ -243,8 +243,11 @@ export async function importIkyuReservationFromText(args: {
 
   const assignmentStatus = selectedSeat ? "assigned" : "unassigned";
 
-  const warningMessage =
-    selectedSeat || !seatChoice.reason
+  const warningMessage = selectedSeat
+    ? seatChoice.capacityMismatch
+      ? capacityMismatchMessage({ seat: selectedSeat, persons, sourceLabel: "一休" })
+      : null
+    : !seatChoice.reason
       ? null
       : noSeatMessage({
           reason: seatChoice.reason,

@@ -23,6 +23,7 @@ export type ReservationRow = {
   start_at?: string | null;
   duration_minutes?: number | null;
   status?: string | null;
+  name?: string | null;
 };
 
 // 席を割り当てられなかった実際の理由
@@ -36,6 +37,8 @@ export type SeatChoice = {
   reason: NoSeatReason | null;
   // 変更メールで、元の席をそのまま維持した場合 true
   keptExisting: boolean;
+  // 元の席を維持したが、人数が席の定員の範囲外のとき true（スタッフが手動で入れた席を守るため）
+  capacityMismatch?: boolean;
 };
 
 function addMinutes(date: Date, minutes: number) {
@@ -46,11 +49,11 @@ function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
 }
 
-function minCap(seat: SeatRow) {
+export function minCap(seat: SeatRow) {
   return Number(seat.min_persons ?? seat.capacity_min ?? 1);
 }
 
-function maxCap(seat: SeatRow) {
+export function maxCap(seat: SeatRow) {
   return Number(seat.max_persons ?? seat.capacity_max ?? 99);
 }
 
@@ -70,7 +73,7 @@ function isSixTableSeatName(name: string) {
   return name === "右6名席" || name === "左6名席";
 }
 
-function expandPhysicalSeatIds(seatId: string, members: SeatMemberRow[]) {
+export function expandPhysicalSeatIds(seatId: string, members: SeatMemberRow[]) {
   const childIds = members
     .filter((m) => String(m.group_seat_id) === String(seatId))
     .map((m) => String(m.member_seat_id));
@@ -136,11 +139,12 @@ export function chooseSeat(args: {
   const isFree = (seat: SeatRow) =>
     !hasSeatConflict(expandPhysicalSeatIds(String(seat.id), members), occupiedPhysicalSeatIds);
 
-  // 元の席が人数に合い、その時間帯に空いていればそのまま維持する
+  // 元の席がその時間帯に空いていればそのまま維持する。
+  // 人数が席の定員から外れていても、スタッフが手動で入れた席の可能性があるため維持する（警告は呼び出し側で出す）
   if (preferSeatId) {
     const preferred = seats.find((s) => String(s.id) === String(preferSeatId));
-    if (preferred && fitsPersons(preferred) && isFree(preferred)) {
-      return { seat: preferred, reason: null, keptExisting: true };
+    if (preferred && isFree(preferred)) {
+      return { seat: preferred, reason: null, keptExisting: true, capacityMismatch: !fitsPersons(preferred) };
     }
   }
 
@@ -208,4 +212,46 @@ export function noSeatMessage(args: {
   return seatKind === "counter"
     ? `${head}${persons}名様のカウンター席に空きがありません。手動で席を確認してください。`
     : `${head}${persons}名様の席（カウンター含む）に空きがありません。手動で席を確認してください。`;
+}
+
+// 元の席を維持したが人数が定員の範囲外のときの、現場向けの警告文
+export function capacityMismatchMessage(args: {
+  seat: SeatRow;
+  persons: number;
+  sourceLabel: string;
+}) {
+  const { seat, persons, sourceLabel } = args;
+  return `${sourceLabel}の変更で人数が${persons}名になりましたが、席「${seat.name}」（${minCap(seat)}〜${maxCap(seat)}名）のままです。席を確認してください。`;
+}
+
+// 予約の席を手動で選んだときの判定。人数が席の定員に合うかと、他の予約との重なりを返す。
+export function evaluateSeatAssignment(args: {
+  seat: SeatRow;
+  members: SeatMemberRow[];
+  reservations: ReservationRow[];
+  persons: number;
+  startAt: Date;
+  duration: number;
+  excludeReservationId?: string | null;
+}) {
+  const { seat, members, reservations, persons, startAt, duration, excludeReservationId } = args;
+  const endAt = addMinutes(startAt, duration);
+  const target = expandPhysicalSeatIds(String(seat.id), members);
+
+  const conflicts = reservations.filter((r) => {
+    if (!r.seat_id || !r.start_at) return false;
+    if (excludeReservationId && String(r.id) === String(excludeReservationId)) return false;
+    if (["cancelled", "finished", "no_show"].includes(String(r.status))) return false;
+
+    const rStart = new Date(r.start_at);
+    const rEnd = addMinutes(rStart, Number(r.duration_minutes ?? 120));
+    if (!overlaps(startAt, endAt, rStart, rEnd)) return false;
+
+    return hasSeatConflict(target, expandPhysicalSeatIds(String(r.seat_id), members));
+  });
+
+  return {
+    fitsPersons: persons >= minCap(seat) && persons <= maxCap(seat),
+    conflicts,
+  };
 }

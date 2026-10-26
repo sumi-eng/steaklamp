@@ -3,7 +3,7 @@ import { Resend } from "resend";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { extractMailContent } from "@/steaklamp/lib/inbound/mail-body";
 import { parseTabelogReservationMail } from "@/steaklamp/lib/inbound/tabelog-parser";
-import { noSeatMessage, type NoSeatReason } from "@/steaklamp/lib/inbound/seat-allocation";
+import { capacityMismatchMessage, noSeatMessage, type NoSeatReason } from "@/steaklamp/lib/inbound/seat-allocation";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
 
 
@@ -137,13 +137,13 @@ async function findAvailableSeat(args: {
   // 変更メールで、元の席が新しい日時・人数でも空いていればそのまま維持する
   if (preferSeatId) {
     const preferred = activeSeats.find((s: any) => String(s.id) === String(preferSeatId));
-    if (
-      preferred &&
-      persons >= minCap(preferred) &&
-      persons <= maxCap(preferred) &&
-      isFree(preferred)
-    ) {
-      return { seat: preferred, reason: null as NoSeatReason | null };
+    // 人数が席の定員から外れていても、スタッフが手動で入れた席の可能性があるため、空いていれば維持する
+    if (preferred && isFree(preferred)) {
+      return {
+        seat: preferred,
+        reason: null as NoSeatReason | null,
+        capacityMismatch: persons < minCap(preferred) || persons > maxCap(preferred),
+      };
     }
   }
 
@@ -397,8 +397,15 @@ export async function POST(req: NextRequest) {
 
     const assignmentStatus = selectedSeat ? "assigned" : "unassigned";
 
-const warningMessage =
-  selectedSeat || !seatChoice.reason
+const warningMessage = selectedSeat
+  ? "capacityMismatch" in seatChoice && seatChoice.capacityMismatch
+    ? capacityMismatchMessage({
+        seat: selectedSeat as any,
+        persons: parsed.persons,
+        sourceLabel: "食べログ",
+      })
+    : null
+  : !seatChoice.reason
     ? null
     : noSeatMessage({
         reason: seatChoice.reason,

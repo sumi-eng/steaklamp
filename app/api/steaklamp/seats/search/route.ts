@@ -116,6 +116,12 @@ export async function POST(req: Request) {
     const startAtRaw = String(body.startAt ?? "");
     const duration = Number(body.duration ?? 120);
     const counterOk = Boolean(body.counterOk ?? false);
+    // 予約詳細の席変更用: 空きでない席・人数に合わない席も、理由つきで返す
+    const includeAll = Boolean(body.includeAll ?? false);
+    // 席変更中の予約自身は、占有している席を空きとして扱う
+    const excludeReservationId = body.excludeReservationId
+      ? String(body.excludeReservationId)
+      : null;
 
     if (!persons || !startAtRaw || !duration) {
       return json({ ok: false, error: "missing_params" }, 400);
@@ -249,9 +255,12 @@ if (closure) {
 
     // 予約済みの「実際に使っている物理席」だけを集める
     const occupiedPhysicalSeatIds = new Set<string>();
+    // 物理席ID -> その席を使っている予約の名前（重なり表示用）
+    const occupiedByName = new Map<string, string>();
 
     for (const r of reservations ?? []) {
       if (!r.seat_id || !r.start_at) continue;
+      if (excludeReservationId && String(r.id) === excludeReservationId) continue;
       if (["cancelled", "finished", "no_show"].includes(String(r.status))) {
         continue;
       }
@@ -267,6 +276,7 @@ if (closure) {
 
       for (const id of reservedPhysicalSeatIds) {
         occupiedPhysicalSeatIds.add(id);
+        if (!occupiedByName.has(id)) occupiedByName.set(id, String(r.name ?? "予約"));
       }
     }
 
@@ -276,6 +286,14 @@ if (closure) {
 
     const result = typedSeats
       .filter((seat) => {
+        if (includeAll) {
+          // 席変更では、物理席(T1-1など)以外のすべての席を選べる。1名のカウンター連結席だけは除く。
+          const n = String(seat.name ?? "");
+          if (/^Td+-d+$/.test(n)) return false;
+          if (persons <= 1 && /^C-d+/.test(n)) return false;
+          return true;
+        }
+
         const seatName = String(seat.name ?? "");
 
         const isPhysicalTableSeat = /^T\d+-\d+$/.test(seatName);
@@ -323,11 +341,26 @@ if (persons >= 7 && isSixSeatGroup) return false;
           physicalSeats = memberNames.join(" / ");
         }
 
+        const physicalIds = expandPhysicalSeatIds(String(seat.id), members, typedSeats);
+        let conflictWith: string | null = null;
+        for (const id of physicalIds) {
+          if (occupiedPhysicalSeatIds.has(id)) {
+            conflictWith = occupiedByName.get(id) ?? "予約";
+            break;
+          }
+        }
+
+        const seatName = String(seat.name ?? "");
+
         return {
           id: seat.id,
           name: seat.name,
           capacityLabel: `${minCap(seat)}〜${maxCap(seat)}名`,
           physicalSeats,
+          kind: /^Cd+$|^C-d+/.test(seatName) ? "counter" : "table",
+          free: conflictWith === null,
+          fitsPersons: persons >= minCap(seat) && persons <= maxCap(seat),
+          conflictWith,
         };
       });
 

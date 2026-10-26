@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
-import { chooseSeat, noSeatMessage } from "./seat-allocation";
+import { capacityMismatchMessage, chooseSeat, noSeatMessage } from "./seat-allocation";
 import type { ReservationRow, SeatMemberRow, SeatRow } from "./seat-allocation";
 import {
   applyPointNote,
@@ -309,8 +309,11 @@ export async function importHotpepperReservationFromText(args: {
 
   const assignmentStatus = selectedSeat ? "assigned" : "unassigned";
 
-  const warningMessage =
-    selectedSeat || !seatChoice.reason
+  const warningMessage = selectedSeat
+    ? seatChoice.capacityMismatch
+      ? capacityMismatchMessage({ seat: selectedSeat, persons, sourceLabel: "ホットペッパー" })
+      : null
+    : !seatChoice.reason
       ? null
       : noSeatMessage({
           reason: seatChoice.reason,
