@@ -28,26 +28,22 @@ function normalizePlanName(value: string | null | undefined) {
 function inferCourse(planNameRaw: string | null | undefined) {
   const planName = normalizePlanName(planNameRaw);
 
-  if (planName.includes("Cコース") || planName.includes("11000") || planName.includes("11,000")) {
-    return {
-      courseName: "Cコース",
-      coursePrice: 11000,
-    };
-  }
+  const has = (...words: string[]) => words.some((w) => planName.includes(w));
 
-  if (planName.includes("Bコース") || planName.includes("8800") || planName.includes("8,800")) {
-    return {
-      courseName: "Bコース",
-      coursePrice: 8800,
-    };
-  }
+  // 価格改定後（A 7,200 / B 9,800 / C 12,000）
+  if (has("12000", "12,000")) return { courseName: "Cコース", coursePrice: 12000 };
+  if (has("9800", "9,800")) return { courseName: "Bコース", coursePrice: 9800 };
+  if (has("7200", "7,200")) return { courseName: "Aコース", coursePrice: 7200 };
 
-  if (planName.includes("Aコース") || planName.includes("6600") || planName.includes("6,600")) {
-    return {
-      courseName: "Aコース",
-      coursePrice: 6600,
-    };
-  }
+  // 改定前の価格が入ったプラン名は旧価格のまま保存する
+  if (has("11000", "11,000")) return { courseName: "Cコース", coursePrice: 11000 };
+  if (has("8800", "8,800")) return { courseName: "Bコース", coursePrice: 8800 };
+  if (has("6600", "6,600")) return { courseName: "Aコース", coursePrice: 6600 };
+
+  // 価格表記がなくコース名だけの場合は新価格
+  if (has("Cコース")) return { courseName: "Cコース", coursePrice: 12000 };
+  if (has("Bコース")) return { courseName: "Bコース", coursePrice: 9800 };
+  if (has("Aコース")) return { courseName: "Aコース", coursePrice: 7200 };
 
   return {
     courseName: planName || "席のみ",
