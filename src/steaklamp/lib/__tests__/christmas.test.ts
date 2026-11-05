@@ -8,6 +8,7 @@ import {
   isReceptionOpen,
   jstDateKey,
   summarizeDay,
+  validateChristmasGuest,
   validateChristmasRequest,
   type ChristmasRow,
 } from "../christmas";
@@ -247,5 +248,35 @@ describe("自社ページの申込検証", () => {
     const three = summarizeDay([4, 4, 1].map((p) => row({ persons: p })), D24);
     expect(validateChristmasRequest({ ...base, summary: three }).ok).toBe(false);
     expect(validateChristmasRequest({ ...base, persons: 3, summary: three }).ok).toBe(true);
+  });
+});
+
+describe("お客様情報の検証（メールアドレス必須）", () => {
+  const ok = {
+    name: "山田 太郎",
+    phone: "09012345678",
+    email: "taro@example.com",
+    allergy: "なし",
+    agreed: true,
+  };
+
+  it("すべて揃っていれば通る", () => {
+    expect(validateChristmasGuest(ok)).toBeNull();
+  });
+
+  it("メールアドレスが空・空白だけなら拒否する", () => {
+    expect(validateChristmasGuest({ ...ok, email: "" })).toContain("メールアドレス");
+    expect(validateChristmasGuest({ ...ok, email: "   " })).toContain("メールアドレス");
+  });
+
+  it("メールアドレスの形式が不正なら拒否する", () => {
+    expect(validateChristmasGuest({ ...ok, email: "taro@" })).toContain("形式");
+  });
+
+  it("電話番号・アレルギー・同意が欠けていれば拒否する", () => {
+    expect(validateChristmasGuest({ ...ok, phone: "123" })).toContain("電話番号");
+    expect(validateChristmasGuest({ ...ok, allergy: " " })).toContain("アレルギー");
+    expect(validateChristmasGuest({ ...ok, agreed: false })).toContain("同意");
+    expect(validateChristmasGuest({ ...ok, name: "" })).toContain("お名前");
   });
 });

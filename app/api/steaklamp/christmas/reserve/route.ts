@@ -8,6 +8,7 @@ import {
   evaluateRegistrationOrder,
   jstDateKey,
   summarizeDay,
+  validateChristmasGuest,
   validateChristmasRequest,
 } from "@/steaklamp/lib/christmas";
 import {
@@ -41,24 +42,12 @@ export async function POST(req: Request) {
     const persons = Number(body.persons ?? 0);
     const name = String(body.name ?? "").trim();
     const phone = String(body.phone ?? "").trim();
-    const email = body.email ? String(body.email).trim() : null;
+    const email = String(body.email ?? "").trim();
     const allergy = String(body.allergy ?? "").trim();
     const agreed = body.agreedToCancelPolicy === true;
 
-    if (!name) return fail("お名前を入力してください。");
-    const phoneDigits = phone.replace(/[^\d]/g, "");
-    if (phoneDigits.length < 10 || phoneDigits.length > 11) {
-      return fail("電話番号は10桁または11桁で入力してください。");
-    }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return fail("メールアドレスの形式をご確認ください。");
-    }
-    if (!allergy) {
-      return fail("アレルギー・苦手な食材を入力してください（無ければ「なし」）。");
-    }
-    if (!agreed) {
-      return fail("キャンセルポリシーへの同意が必要です。");
-    }
+    const guestError = validateChristmasGuest({ name, phone, email, allergy, agreed });
+    if (guestError) return fail(guestError);
 
     const storeId = await getSteaklampStoreId();
 

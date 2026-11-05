@@ -7,6 +7,7 @@ import {
   CHRISTMAS_MENU,
   CHRISTMAS_PRICE_TEXT,
   dateLabel,
+  validateChristmasGuest,
 } from "@/steaklamp/lib/christmas";
 
 type TimeInfo = { time: string; available: boolean; reason?: string };
@@ -40,11 +41,6 @@ const selectClass =
 
 function remainingText(d: Pick<DayInfo, "remainingGroups" | "remainingPersons">) {
   return `残り${d.remainingGroups}組・${d.remainingPersons}名`;
-}
-
-function isValidEmail(v: string) {
-  if (!v) return true;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
 export default function ChristmasReservePage() {
@@ -130,16 +126,8 @@ export default function ChristmasReservePage() {
 
   function goConfirm() {
     setErrorMessage(null);
-    if (!name.trim()) return setErrorMessage("お名前を入力してください。");
-    const digits = phone.replace(/[^\d]/g, "");
-    if (digits.length < 10 || digits.length > 11) {
-      return setErrorMessage("電話番号は10桁または11桁で入力してください。");
-    }
-    if (!isValidEmail(email.trim())) return setErrorMessage("メールアドレスの形式をご確認ください。");
-    if (!allergy.trim()) {
-      return setErrorMessage("アレルギー・苦手な食材を入力してください（無ければ「なし」）。");
-    }
-    if (!agreed) return setErrorMessage("キャンセルポリシーへの同意が必要です。");
+    const guestError = validateChristmasGuest({ name, phone, email, allergy, agreed });
+    if (guestError) return setErrorMessage(guestError);
     setStep("confirm");
   }
 
@@ -156,7 +144,7 @@ export default function ChristmasReservePage() {
           persons,
           name: name.trim(),
           phone: phone.trim(),
-          email: email.trim() || null,
+          email: email.trim(),
           allergy: allergy.trim(),
           agreedToCancelPolicy: agreed,
         }),
@@ -413,7 +401,10 @@ export default function ChristmasReservePage() {
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-bold">
-                    メールアドレス（予約確認・前日のご案内をお送りします）
+                    メールアドレス <span className="text-red-600">（必須）</span>
+                    <span className="ml-1 text-xs font-normal text-stone-500">
+                      予約確認と前日のご案内をお送りします
+                    </span>
                   </label>
                   <input
                     type="email"
@@ -501,7 +492,7 @@ export default function ChristmasReservePage() {
                   <dt className="text-stone-500">電話番号</dt>
                   <dd>{phone}</dd>
                   <dt className="text-stone-500">メール</dt>
-                  <dd>{email || "（未入力）"}</dd>
+                  <dd>{email}</dd>
                   <dt className="text-stone-500">アレルギー等</dt>
                   <dd className="whitespace-pre-wrap">{allergy}</dd>
                   <dt className="text-stone-500">ポリシー</dt>
@@ -545,11 +536,9 @@ export default function ChristmasReservePage() {
                   <div className="mt-2 text-sm">
                     {dateLabel(date)} {time}〜 ／ {persons}名 ／ {CHRISTMAS.courseName}
                   </div>
-                  {email.trim() ? (
-                    <div className="mt-2 text-sm">
-                      ご予約内容を {email.trim()} にお送りしました。
-                    </div>
-                  ) : null}
+                  <div className="mt-2 text-sm">
+                    ご予約内容を {email.trim()} にお送りしました。
+                  </div>
                 </div>
                 <div className="text-xs text-stone-600">
                   2日前までのキャンセルは確認メールのリンクから、前日・当日はお電話（

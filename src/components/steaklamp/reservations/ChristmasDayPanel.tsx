@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { signIn, signOut } from "next-auth/react";
 import { CHRISTMAS, jstDateKey } from "@/steaklamp/lib/christmas";
 
 type Day = {
@@ -27,6 +28,8 @@ export default function ChristmasDayPanel({
   const [days, setDays] = useState<Day[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyDate, setBusyDate] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -34,6 +37,8 @@ export default function ChristmasDayPanel({
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.ok) {
         setDays(json.days as Day[]);
+        setSignedIn(Boolean(json.signedIn));
+        setCanEdit(Boolean(json.canEdit));
         setError(null);
       } else {
         setError("クリスマスの残り枠を取得できませんでした");
@@ -64,7 +69,9 @@ export default function ChristmasDayPanel({
         body: JSON.stringify({ date: day.date, is_closed: next }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.ok) {
+      if (res.status === 401 || res.status === 403) {
+        window.alert("この操作には管理者としてのログインが必要です。");
+      } else if (!res.ok || !json.ok) {
         window.alert("受付の切り替えに失敗しました。もう一度お試しください。");
       }
     } catch {
@@ -119,18 +126,48 @@ export default function ChristmasDayPanel({
               <span className="mx-1 text-stone-400">／</span>
               残り <b>{d.remainingGroups}組・{d.remainingPersons}名</b>
             </div>
-            <button
-              type="button"
-              disabled={busyDate === d.date}
-              onClick={() => toggleClosed(d)}
-              className="mt-2 rounded-xl border border-stone-300 bg-white px-3 py-1.5 text-xs font-bold text-stone-700 hover:bg-stone-100 disabled:opacity-50"
-            >
-              {d.closed ? "Web受付を再開する" : "Web受付を締め切る"}
-            </button>
+            {canEdit ? (
+              <button
+                type="button"
+                disabled={busyDate === d.date}
+                onClick={() => toggleClosed(d)}
+                className="mt-2 rounded-xl border border-stone-300 bg-white px-3 py-1.5 text-xs font-bold text-stone-700 hover:bg-stone-100 disabled:opacity-50"
+              >
+                {d.closed ? "Web受付を再開する" : "Web受付を締め切る"}
+              </button>
+            ) : null}
           </div>
         ))}
         {!days && !error ? <div className="text-sm text-stone-500">読み込み中...</div> : null}
       </div>
+
+      {days && !canEdit ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-600">
+          {signedIn ? (
+            <>
+              <span>このアカウントには受付を締め切る権限がありません。</span>
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: window.location.href })}
+                className="rounded-lg border border-stone-300 bg-white px-2 py-1 font-bold"
+              >
+                ログアウト
+              </button>
+            </>
+          ) : (
+            <>
+              <span>受付の締切・再開は、管理者ログインが必要です。</span>
+              <button
+                type="button"
+                onClick={() => signIn("google", { callbackUrl: window.location.href })}
+                className="rounded-lg border border-stone-300 bg-white px-2 py-1 font-bold"
+              >
+                管理者ログイン（Google）
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

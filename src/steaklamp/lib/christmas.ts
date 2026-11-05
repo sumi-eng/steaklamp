@@ -207,6 +207,31 @@ export function inferChristmasCourse(planName: string | null | undefined) {
   return { courseName: CHRISTMAS.courseName, coursePrice: CHRISTMAS.price };
 }
 
+// お客様情報の検証（ページとAPIの両方で使う）。メールアドレスは必須。
+export function validateChristmasGuest(args: {
+  name: string;
+  phone: string;
+  email: string;
+  allergy: string;
+  agreed: boolean;
+}): string | null {
+  if (!args.name.trim()) return "お名前を入力してください。";
+  const digits = args.phone.replace(/[^\d]/g, "");
+  if (digits.length < 10 || digits.length > 11) {
+    return "電話番号は10桁または11桁で入力してください。";
+  }
+  const email = args.email.trim();
+  if (!email) return "メールアドレスを入力してください（予約確認と前日のご案内をお送りします）。";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return "メールアドレスの形式をご確認ください。";
+  }
+  if (!args.allergy.trim()) {
+    return "アレルギー・苦手な食材を入力してください（無ければ「なし」）。";
+  }
+  if (!args.agreed) return "キャンセルポリシーへの同意が必要です。";
+  return null;
+}
+
 export type SlotCheck =
   | { ok: true }
   | { ok: false; reason: string };

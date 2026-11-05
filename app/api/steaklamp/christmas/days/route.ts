@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { dateLabel, isChristmasDate } from "@/steaklamp/lib/christmas";
+import { getAdminStatus } from "@/steaklamp/lib/adminAuth";
 import {
   getSteaklampStoreId,
   loadDaySummaries,
@@ -14,9 +15,13 @@ export async function GET() {
   try {
     const storeId = await getSteaklampStoreId();
     const { summaries } = await loadDaySummaries(storeId);
+    const admin = await getAdminStatus();
     return NextResponse.json(
       {
         ok: true,
+        // 締切の操作ができるか（管理者としてログイン済みか）
+        signedIn: admin.signedIn,
+        canEdit: admin.isAdmin,
         days: summaries.map((s) => ({ ...s, label: dateLabel(s.date) })),
       },
       { headers: { "Cache-Control": "no-store" } }
@@ -32,6 +37,15 @@ export async function GET() {
 // 日ごとの受付の手動締切・再開
 export async function PUT(req: Request) {
   try {
+    // 受付の手動締切は管理者（Google ログイン＋許可リスト）だけが操作できる
+    const admin = await getAdminStatus();
+    if (!admin.signedIn) {
+      return NextResponse.json({ ok: false, error: "login_required" }, { status: 401 });
+    }
+    if (!admin.isAdmin) {
+      return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const date = String(body.date ?? "");
     const isClosed = body.is_closed === true;
