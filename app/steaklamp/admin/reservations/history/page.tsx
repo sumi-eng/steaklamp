@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/steaklamp/lib/adminClient";
+
 import { useEffect, useMemo, useState } from "react";
 import { useForegroundRefresh } from "@/steaklamp/hooks/useForegroundRefresh";
 import Link from "next/link";
@@ -126,7 +128,7 @@ export default function SteaklampReservationHistoryPage() {
   setErr(null);
 
   try {
-    const res = await fetch(
+    const res = await adminFetch(
       "/api/steaklamp/reservations/history",
       { cache: "no-store" }
     );

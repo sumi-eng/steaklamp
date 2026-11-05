@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/steaklamp/lib/adminClient";
+
 import { useEffect, useRef, useState } from "react";
 import RefreshButton from "../RefreshButton";
 import { useForegroundRefresh } from "@/steaklamp/hooks/useForegroundRefresh";
@@ -94,7 +96,7 @@ export default function ReservationListView() {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch(
+        const res = await adminFetch(
           `/api/steaklamp/reservations/day?date=${dateKey}`,
           { cache: "no-store" }
         );
@@ -146,7 +148,7 @@ export default function ReservationListView() {
       const month = formatMonthKey(calendarMonth);
 
       try {
-        const res = await fetch(`/api/steaklamp/calendar-meta?month=${month}`, {
+        const res = await adminFetch(`/api/steaklamp/calendar-meta?month=${month}`, {
           cache: "no-store",
         });
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/steaklamp/lib/adminClient";
+
 import { useEffect, useMemo, useState } from "react";
 
 type Seat = {
@@ -32,7 +34,7 @@ export default function SeatGroupsEditor() {
       setMessage("");
 
       try {
-        const res = await fetch("/api/steaklamp/admin/seat-groups", {
+        const res = await adminFetch("/api/steaklamp/admin/seat-groups", {
           cache: "no-store",
         });
         const json = await res.json();
@@ -124,7 +126,7 @@ export default function SeatGroupsEditor() {
     setMessage("");
 
     try {
-      const res = await fetch("/api/steaklamp/admin/seat-groups", {
+      const res = await adminFetch("/api/steaklamp/admin/seat-groups", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

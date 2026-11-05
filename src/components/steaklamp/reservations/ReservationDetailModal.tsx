@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/steaklamp/lib/adminClient";
+
 import { useEffect, useState } from "react";
 
 type SeatCandidate = {
@@ -88,7 +90,7 @@ const [coursePrice, setCoursePrice] = useState<number | null>(
       setLoadingSeats(true);
 
       try {
-        const res = await fetch("/api/steaklamp/seats/search", {
+        const res = await adminFetch("/api/steaklamp/seats/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -142,7 +144,7 @@ const [coursePrice, setCoursePrice] = useState<number | null>(
     setSaving(true);
 
     try {
-      const send = () => fetch("/api/steaklamp/reservations/update", {
+      const send = () => adminFetch("/api/steaklamp/reservations/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -192,7 +194,7 @@ course_price_snapshot: coursePrice,
     setDeleting(true);
 
     try {
-      const res = await fetch("/api/steaklamp/reservations/delete", {
+      const res = await adminFetch("/api/steaklamp/reservations/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: reservation.id }),

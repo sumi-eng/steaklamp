@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/steaklamp/lib/adminClient";
+
 import { useEffect, useState } from "react";
 
 type Row = {
@@ -37,7 +39,7 @@ export default function SeatsEditor() {
       setMessage("");
 
       try {
-        const res = await fetch("/api/steaklamp/admin/seats", {
+        const res = await adminFetch("/api/steaklamp/admin/seats", {
           cache: "no-store",
         });
         const json = await res.json();
@@ -73,7 +75,7 @@ export default function SeatsEditor() {
     setMessage("");
 
     try {
-      const res = await fetch("/api/steaklamp/admin/seats", {
+      const res = await adminFetch("/api/steaklamp/admin/seats", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

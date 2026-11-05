@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/steaklamp/lib/adminClient";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
@@ -90,7 +92,7 @@ useEffect(() => {
   setSeatMessage("");
 
   try {
-    const res = await fetch("/api/steaklamp/seats/search", {
+    const res = await adminFetch("/api/steaklamp/seats/search", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -131,7 +133,7 @@ useEffect(() => {
   setCreating(true);
 
   try {
-    const res = await fetch("/api/steaklamp/reservations/create", {
+    const res = await adminFetch("/api/steaklamp/reservations/create", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

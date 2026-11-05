@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/steaklamp/lib/adminClient";
+
 import { useEffect, useState } from "react";
 
 type Row = {
@@ -30,7 +32,7 @@ export default function BusinessHoursEditor() {
       setLoading(true);
       setMessage("");
 
-      const res = await fetch("/api/steaklamp/admin/business-hours", {
+      const res = await adminFetch("/api/steaklamp/admin/business-hours", {
         cache: "no-store",
       });
       const json = await res.json();
@@ -56,7 +58,7 @@ export default function BusinessHoursEditor() {
     setSaving(true);
     setMessage("");
 
-    const res = await fetch("/api/steaklamp/admin/business-hours", {
+    const res = await adminFetch("/api/steaklamp/admin/business-hours", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

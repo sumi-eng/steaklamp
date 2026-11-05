@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/steaklamp/lib/adminClient";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import RefreshButton from "../RefreshButton";
 import { useForegroundRefresh } from "@/steaklamp/hooks/useForegroundRefresh";
@@ -161,7 +163,7 @@ useEffect(() => {
 
   async function loadInitialClosures() {
     try {
-      const res = await fetch("/api/steaklamp/closures", {
+      const res = await adminFetch("/api/steaklamp/closures", {
         cache: "no-store",
       });
       const data = await res.json();
@@ -237,7 +239,7 @@ const assignedReservations = useMemo(() => {
       setLoading(true);
 
       try {
-        const res = await fetch(`/api/steaklamp/reservations/day?date=${dateKey}`, {
+        const res = await adminFetch(`/api/steaklamp/reservations/day?date=${dateKey}`, {
           cache: "no-store",
         });
 
@@ -275,7 +277,7 @@ const assignedReservations = useMemo(() => {
       const month = formatMonthKey(calendarMonth);
 
       try {
-        const res = await fetch(`/api/steaklamp/calendar-meta?month=${month}`, {
+        const res = await adminFetch(`/api/steaklamp/calendar-meta?month=${month}`, {
           cache: "no-store",
         });
 
@@ -337,13 +339,13 @@ setCalendarMeta(map);
   }
 
 async function loadClosures() {
-  const res = await fetch("/api/steaklamp/closures");
+  const res = await adminFetch("/api/steaklamp/closures");
   const data = await res.json();
   if (data.ok) setClosures(data.items ?? []);
 }
 
 async function addClosure() {
-  const res = await fetch("/api/steaklamp/closures", {
+  const res = await adminFetch("/api/steaklamp/closures", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -368,7 +370,7 @@ alert("休業日を登録しました");
 async function deleteClosure(id: string) {
   if (!confirm("削除しますか？")) return;
 
-  await fetch(`/api/steaklamp/closures/${id}`, {
+  await adminFetch(`/api/steaklamp/closures/${id}`, {
     method: "DELETE",
   });
 
