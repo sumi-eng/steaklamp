@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -8,6 +9,9 @@ function json(data: unknown, status = 200) {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireAdmin("reservations/delete");
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const id = String(body.id ?? "").trim();

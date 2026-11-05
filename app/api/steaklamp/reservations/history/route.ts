@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -6,6 +7,9 @@ export const runtime = "nodejs";
 const STORE_CODE = "steaklamp";
 
 export async function GET() {
+  const denied = await requireAdmin("reservations/history");
+  if (denied) return denied;
+
   try {
     // 店舗取得
     const { data: store, error: storeError } = await supabaseAdmin

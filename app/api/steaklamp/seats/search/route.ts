@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
+import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 
 export const runtime = "nodejs";
 
@@ -122,6 +123,13 @@ export async function POST(req: Request) {
     const excludeReservationId = body.excludeReservationId
       ? String(body.excludeReservationId)
       : null;
+
+    // 席変更用のオプションは、他の予約の情報が見えるため管理者だけに許可する。
+    // お客様の予約ページ（通常の席検索）はこれらを指定しないので影響しない。
+    if (includeAll || excludeReservationId) {
+      const denied = await requireAdmin("seats/search(includeAll)");
+      if (denied) return denied;
+    }
 
     if (!persons || !startAtRaw || !duration) {
       return json({ ok: false, error: "missing_params" }, 400);

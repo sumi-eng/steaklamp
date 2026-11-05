@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { isChristmasCourse } from "@/steaklamp/lib/christmas";
 import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
@@ -18,6 +19,9 @@ function json(data: unknown, status = 200) {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireAdmin("reservations/update");
+  if (denied) return denied;
+
   try {
     const body = await req.json();
 

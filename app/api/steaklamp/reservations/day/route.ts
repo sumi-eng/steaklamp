@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -27,6 +28,9 @@ function maxCap(seat: any) {
 }
 
 export async function GET(req: Request) {
+  const denied = await requireAdmin("reservations/day");
+  if (denied) return denied;
+
   try {
     const url = new URL(req.url);
     const date = url.searchParams.get("date");

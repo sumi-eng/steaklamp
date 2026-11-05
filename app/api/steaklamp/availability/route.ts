@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -85,6 +86,9 @@ function parseAllowOnlyRange(ruleType: string): { min: number; max: number } | n
 }
 
 export async function POST(req: Request) {
+  const denied = await requireAdmin("availability(POST)", { unusedCandidate: true });
+  if (denied) return denied;
+
   try {
     const body = await req.json();
 

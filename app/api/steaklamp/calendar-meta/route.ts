@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -67,6 +68,9 @@ const CROWDED_THRESHOLD = 4;
 const FULL_THRESHOLD = 6;
 
 export async function GET(req: Request) {
+  const denied = await requireAdmin("calendar-meta");
+  if (denied) return denied;
+
   try {
     const url = new URL(req.url);
     const month = url.searchParams.get("month"); // YYYY-MM

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -8,6 +9,9 @@ function json(data: unknown, status = 200) {
 }
 
 export async function GET() {
+  const denied = await requireAdmin("admin/seats GET");
+  if (denied) return denied;
+
   const { data: store, error: storeError } = await supabaseAdmin
     .from("stores")
     .select("id")
@@ -32,6 +36,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const denied = await requireAdmin("admin/seats POST");
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const rows = Array.isArray(body?.rows) ? body.rows : null;

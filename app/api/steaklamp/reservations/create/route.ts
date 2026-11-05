@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice } from "@/steaklamp/lib/lineNotify";
+import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import {
   isChristmasCourse,
   isChristmasDate,
@@ -241,6 +242,13 @@ export async function POST(req: Request) {
 
 const source = String(body.source ?? "web");
 const isAdminCreate = source === "admin";
+
+// source:"admin" は受付期限・過去日のチェックを省略できる。
+// 本文の自己申告だけでは認めず、管理者のログインがある場合だけ使えるようにする。
+if (isAdminCreate) {
+  const denied = await requireAdmin("reservations/create(source=admin)");
+  if (denied) return denied;
+}
 
 
     const courseId = body.course_id ?? null;
