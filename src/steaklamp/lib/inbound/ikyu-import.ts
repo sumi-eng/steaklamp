@@ -30,15 +30,26 @@ function extractPlanPrice(planName: string) {
 function inferCourse(planNameRaw: string | null | undefined) {
   const planName = normalizePlanName(planNameRaw);
 
-  if (planName.includes("Cコース")) return { courseName: "Cコース", coursePrice: 11000 };
-  if (planName.includes("Bコース")) return { courseName: "Bコース", coursePrice: 8800 };
-  if (planName.includes("Aコース")) return { courseName: "Aコース", coursePrice: 6600 };
-
   const price = extractPlanPrice(planName);
 
-  // 一休は高単価プランが中心のため、11000円以上はCコース相当として扱う
+  // 改定後: A 7,200 / B 9,800 / C 12,000、改定前: A 6,600 / B 8,800 / C 11,000
+  // プラン名に旧価格の金額が入っている場合は旧価格のまま保存する
+  const isOld = (oldPrice: number, newPrice: number) =>
+    price !== null && price >= oldPrice && price < newPrice;
+
+  if (planName.includes("Cコース"))
+    return { courseName: "Cコース", coursePrice: isOld(11000, 12000) ? 11000 : 12000 };
+  if (planName.includes("Bコース"))
+    return { courseName: "Bコース", coursePrice: isOld(8800, 9800) ? 8800 : 9800 };
+  if (planName.includes("Aコース"))
+    return { courseName: "Aコース", coursePrice: isOld(6600, 7200) ? 6600 : 7200 };
+
+  // 一休は高単価プランが中心のため、12000円以上はCコース相当として扱う
+  if (price !== null && price >= 12000) return { courseName: "Cコース", coursePrice: 12000 };
   if (price !== null && price >= 11000) return { courseName: "Cコース", coursePrice: 11000 };
+  if (price !== null && price >= 9800) return { courseName: "Bコース", coursePrice: 9800 };
   if (price !== null && price >= 8800) return { courseName: "Bコース", coursePrice: 8800 };
+  if (price !== null && price >= 7200) return { courseName: "Aコース", coursePrice: 7200 };
   if (price !== null && price >= 6600) return { courseName: "Aコース", coursePrice: 6600 };
 
   return {
