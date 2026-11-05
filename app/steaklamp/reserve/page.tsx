@@ -37,18 +37,18 @@ const PLANS: Record<Plan, { label: string; price: number | null; help: string }>
   },
   course_a: {
     label: "Aコース",
-    price: 6600,
-    help: "当日１５時まで受付。6,600円（税込）",
+    price: 7200,
+    help: "当日１５時まで受付。7,200円（税込）",
   },
   course_b: {
     label: "Bコース",
-    price: 8800,
-    help: "当日１５時まで受付。8,800円（税込）",
+    price: 9800,
+    help: "当日１５時まで受付。9,800円（税込）",
   },
   course_c: {
     label: "Cコース",
-    price: 11000,
-    help: "3日前まで受付。11,000円（税込）",
+    price: 12000,
+    help: "3日前まで受付。12,000円（税込）",
   },
 };
 

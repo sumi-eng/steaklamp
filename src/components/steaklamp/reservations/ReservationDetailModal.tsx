@@ -303,17 +303,17 @@ course_price_snapshot: coursePrice,
       const value = e.target.value;
       setCourseName(value);
 
-      if (value === "Aコース") setCoursePrice(6600);
-      else if (value === "Bコース") setCoursePrice(8800);
-      else if (value === "Cコース") setCoursePrice(11000);
+      if (value === "Aコース") setCoursePrice(7200);
+      else if (value === "Bコース") setCoursePrice(9800);
+      else if (value === "Cコース") setCoursePrice(12000);
       else setCoursePrice(null);
     }}
     className="w-full rounded-2xl border border-stone-300 px-4 py-3"
   >
     <option value="席のみ">席のみ</option>
-    <option value="Aコース">Aコース 6,600円</option>
-    <option value="Bコース">Bコース 8,800円</option>
-    <option value="Cコース">Cコース 11,000円</option>
+    <option value="Aコース">Aコース 7,200円</option>
+    <option value="Bコース">Bコース 9,800円</option>
+    <option value="Cコース">Cコース 12,000円</option>
   </select>
 </label>
 

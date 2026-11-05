@@ -58,20 +58,20 @@ const PLANS: Record<
   course_a: {
     label: "Course A",
     apiLabel: "Aコース",
-    price: 6600,
-    help: "Accepted until 3:00 PM on the day of your visit. ¥6,600 (tax included)",
+    price: 7200,
+    help: "Accepted until 3:00 PM on the day of your visit. ¥7,200 (tax included)",
   },
   course_b: {
     label: "Course B",
     apiLabel: "Bコース",
-    price: 8800,
-    help: "Accepted until 3:00 PM on the day of your visit. ¥8,800 (tax included)",
+    price: 9800,
+    help: "Accepted until 3:00 PM on the day of your visit. ¥9,800 (tax included)",
   },
   course_c: {
     label: "Course C",
     apiLabel: "Cコース",
-    price: 11000,
-    help: "Accepted up to 3 days in advance. ¥11,000 (tax included)",
+    price: 12000,
+    help: "Accepted up to 3 days in advance. ¥12,000 (tax included)",
   },
 };
 
