@@ -34,7 +34,7 @@
 2. Basic settings の「Channel secret」をコピーし、`LINE_CHANNEL_SECRET` に登録する。
 3. 同じチャネルの Messaging API 設定で、Webhook URL の「検証」ボタンが成功することを確認する。
    - LINE ログイン用のチャネル（`LINE_CLIENT_SECRET` の側）とは別物の場合が多い。
-   - 取得できない間は `WEBHOOK_VERIFY_MODE` を `enforce` にしないこと（LINE webhook だけでなく、設定が無い状態では全 webhook が拒否対象になる点に注意。下記「注意」を参照）。
+   - `WEBHOOK_VERIFY_MODE` は全 webhook に共通。Channel secret が未設定のまま `enforce` にすると、LINE の webhook は全て拒否される（現状はログを出すだけの処理なので予約には影響しないが、LINE 側の検証は失敗する）。取得できるまでは LINE だけ未対応であることを承知のうえで切り替えること。
 
 ## 切り替えの流れ
 
