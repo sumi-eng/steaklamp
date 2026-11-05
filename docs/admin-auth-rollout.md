@@ -7,18 +7,20 @@
 |---|---|---|
 | `ADMIN_AUTH_MODE` | `log`（未設定も同じ）/ `enforce` | 管理画面・管理APIの認証 |
 | `WEBHOOK_VERIFY_MODE` | `log`（未設定も同じ）/ `enforce` | 受信webhookの署名検証 |
-| `STEAKLAMP_ADMIN_EMAILS` | お店用とオーナーのGoogleメールをカンマ区切り | 管理者の許可リスト（Googleログインのみ有効。未設定だと全員拒否） |
+| `STEAKLAMP_ADMIN_EMAILS` | 個人用とお店用（共用端末）のGoogleメールをカンマ区切り | 管理者の許可リスト（Googleログインのみ有効。未設定だと全員拒否） |
 | `RESEND_WEBHOOK_SECRET_RESEND` / `_TABELOG` / `_IKYU` | Resend の Signing Secret（`whsec_...`） | 各受信webhookの署名シークレット |
 | `LINE_CHANNEL_SECRET` | LINE Messaging API の Channel secret | LINE webhook の署名検証 |
 | `CRON_SECRET` | 推測されにくい文字列 | クリスマスのリマインド（設定済みであること） |
 
-> `STEAKLAMP_ADMIN_EMAILS` の書式: `メール1,メール2`（カンマ・空白・セミコロン区切り。大文字小文字は区別しない）。
+> `STEAKLAMP_ADMIN_EMAILS` の書式（個人用,お店用）: `sumitetsuya1020@gmail.com,sumi@naturallife.jp`（カンマ・空白・セミコロン区切り。大文字小文字は区別しない）。
 > 2つのアドレスを区切りなしで連結すると、どちらにも一致せず誰もログインできなくなる。
 
 ## 設定手順
 
 ### 管理者の許可リスト
-1. Vercel → Settings → Environment Variables で `STEAKLAMP_ADMIN_EMAILS` を登録する（Production）。
+1. Vercel → Settings → Environment Variables で `STEAKLAMP_ADMIN_EMAILS` に `sumitetsuya1020@gmail.com,sumi@naturallife.jp` を登録する（Production）。
+   - 個人用：sumitetsuya1020@gmail.com ／ お店用（共用端末）：sumi@naturallife.jp
+   - どちらも **Googleアカウントとしてログインできる**ことが前提（`sumi@naturallife.jp` が Google Workspace などのGoogleアカウントであること）。
 2. 再デプロイする。
 
 ### Resend の署名シークレット（3つ）
