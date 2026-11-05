@@ -6,7 +6,8 @@ import LINE from "next-auth/providers/line";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   secret: process.env.AUTH_SECRET,
-  session: { strategy: "jwt" },
+  // 30日（使うたびに延長）。台帳を開いたままでも、前面に戻るたびに更新される
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60, updateAge: 24 * 60 * 60 },
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
