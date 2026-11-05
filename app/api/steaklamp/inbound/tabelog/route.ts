@@ -9,6 +9,8 @@ import { inferChristmasCourse } from "@/steaklamp/lib/christmas";
 import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
 
 
+import { guardResendWebhook, parseJsonBody } from "@/steaklamp/lib/webhookVerify";
+
 export const runtime = "nodejs";
 
 // 食べログ受信用のResend宛先アドレス（例: xxx@yyy.resend.app）
@@ -188,7 +190,17 @@ export async function POST(req: NextRequest) {
     }
 
     const resend = new Resend(apiKey);
-    const event = await req.json().catch(() => ({} as any));
+    // 署名の検証（Resend の署名シークレット）。本文は検証のため、パース前の文字列のまま取得する
+    const rawBody = await req.text();
+    const rejected = guardResendWebhook({
+      label: "inbound/tabelog",
+      secretEnvName: "RESEND_WEBHOOK_SECRET_TABELOG",
+      headers: req.headers,
+      rawBody,
+    });
+    if (rejected) return rejected;
+
+    const event = parseJsonBody(rawBody);
 
     console.log("STEAKLAMP_TABELOG_INBOUND_EVENT =", JSON.stringify(event));
 

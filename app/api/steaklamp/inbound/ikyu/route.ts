@@ -3,6 +3,8 @@ import { Resend } from "resend";
 import { extractMailContent } from "@/steaklamp/lib/inbound/mail-body";
 import { importIkyuReservationFromText } from "@/steaklamp/lib/inbound/ikyu-import";
 
+import { guardResendWebhook, parseJsonBody } from "@/steaklamp/lib/webhookVerify";
+
 export const runtime = "nodejs";
 
 const IKYU_INBOUND_ADDRESS =
@@ -20,7 +22,17 @@ export async function POST(req: NextRequest) {
     }
 
     const resend = new Resend(apiKey);
-    const event = await req.json().catch(() => ({} as any));
+    // 署名の検証（Resend の署名シークレット）。本文は検証のため、パース前の文字列のまま取得する
+    const rawBody = await req.text();
+    const rejected = guardResendWebhook({
+      label: "inbound/ikyu",
+      secretEnvName: "RESEND_WEBHOOK_SECRET_IKYU",
+      headers: req.headers,
+      rawBody,
+    });
+    if (rejected) return rejected;
+
+    const event = parseJsonBody(rawBody);
 
     console.log("STEAKLAMP_IKYU_INBOUND_EVENT =", JSON.stringify(event));
 
