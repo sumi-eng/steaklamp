@@ -145,3 +145,31 @@ export async function sendLineReviewNotice(args: {
     console.error("LINE review notify failed", res.status, detail);
   }
 }
+
+// 任意の本文をスタッフのLINEへ送る（満席・上限超過などの通知用）
+export async function sendLineText(text: string) {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const to =
+    process.env.LINE_STEAKLAMP_TO_ID ||
+    process.env.LINE_TO_GROUP_ID ||
+    process.env.LINE_TO_USER_ID;
+
+  if (!token || !to) {
+    console.warn("LINE env is missing");
+    return;
+  }
+
+  const res = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ to, messages: [{ type: "text", text }] }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    console.error("LINE text notify failed", res.status, detail);
+  }
+}

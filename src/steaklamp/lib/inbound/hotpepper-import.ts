@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
+import { inferChristmasCourse, isChristmasCourse } from "@/steaklamp/lib/christmas";
+import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
 import { capacityMismatchMessage, chooseSeat, noSeatMessage } from "./seat-allocation";
 import type { ReservationRow, SeatMemberRow, SeatRow } from "./seat-allocation";
 import {
@@ -25,8 +27,12 @@ function normalizePlanName(value: string | null | undefined) {
     .trim();
 }
 
-function inferCourse(planNameRaw: string | null | undefined) {
+export function inferCourse(planNameRaw: string | null | undefined) {
   const planName = normalizePlanName(planNameRaw);
+
+  // クリスマスコース(11,000円)は、Cコースの旧価格と同額なので最初に判定する
+  const christmas = inferChristmasCourse(planName);
+  if (christmas) return christmas;
 
   const has = (...words: string[]) => words.some((w) => planName.includes(w));
 
@@ -115,6 +121,24 @@ export async function findSeat(args: {
 // 後方互換: 席だけを返す
 export async function findSeatCandidate(args: Parameters<typeof findSeat>[0]) {
   return (await findSeat(args)).seat;
+}
+
+// クリスマスコースなら、残り枠を数え直して満席・上限超過・残り1組をLINEで知らせる
+async function notifyChristmasCapacity(
+  storeId: string,
+  reservationId: string,
+  courseName: string | null | undefined
+) {
+  if (!isChristmasCourse(courseName)) return;
+  try {
+    await afterChristmasReservationSaved({
+      storeId,
+      reservationId,
+      sourceLabel: "ホットペッパー",
+    });
+  } catch (e) {
+    console.error("christmas capacity notify failed", e);
+  }
 }
 
 export async function importHotpepperReservationFromText(args: {
@@ -387,6 +411,7 @@ warning_message: warningMessage,
         error: updateRes.error,
       };
     }
+await notifyChristmasCapacity(store.id, updateRes.data.id, course.courseName);
 await sendLineReservationNotice({
   name: parsed.name,
   phone: null,
@@ -431,6 +456,7 @@ warningMessage,
       error: insertRes.error,
     };
   }
+await notifyChristmasCapacity(store.id, insertRes.data.id, course.courseName);
 await sendLineReservationNotice({
   name: parsed.name,
   phone: null,

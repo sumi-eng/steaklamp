@@ -5,6 +5,8 @@ import { extractMailContent } from "@/steaklamp/lib/inbound/mail-body";
 import { parseTabelogReservationMail } from "@/steaklamp/lib/inbound/tabelog-parser";
 import { capacityMismatchMessage, noSeatMessage, type NoSeatReason } from "@/steaklamp/lib/inbound/seat-allocation";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
+import { inferChristmasCourse } from "@/steaklamp/lib/christmas";
+import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
 
 
 export const runtime = "nodejs";
@@ -414,6 +416,22 @@ const warningMessage = selectedSeat
         sourceLabel: "食べログ",
       });
 
+    // プラン名に「クリスマス」を含む予約は、クリスマスコース(11,000円)として扱う
+    const christmasCourse = inferChristmasCourse(parsed.planName);
+
+    const notifyChristmas = async (reservationId: string) => {
+      if (!christmasCourse) return;
+      try {
+        await afterChristmasReservationSaved({
+          storeId: store.id,
+          reservationId,
+          sourceLabel: "食べログ",
+        });
+      } catch (e) {
+        console.error("christmas capacity notify failed", e);
+      }
+    };
+
     const payload = {
       store_id: store.id,
       seat_id: selectedSeat?.id ?? null,
@@ -430,8 +448,8 @@ warning_message: warningMessage,
       start_at: startAt.toISOString(),
       duration_minutes: duration,
 
-      course_name_snapshot: parsed.planName || "お席のみのご予約",
-      course_price_snapshot: 0,
+      course_name_snapshot: christmasCourse?.courseName ?? (parsed.planName || "お席のみのご予約"),
+      course_price_snapshot: christmasCourse?.coursePrice ?? 0,
 
       notes: notesText,
       status: "booked",
@@ -462,6 +480,7 @@ warning_message: warningMessage,
         console.error("STEAKLAMP_TABELOG_UPDATE_ERROR =", error);
         return json({ ok: false, reason: "update_failed", error, parsed }, 500);
       }
+await notifyChristmas(String(data.id));
 await sendLineReservationNotice({
   name: parsed.name,
   phone: parsed.phone,
@@ -499,6 +518,7 @@ await sendLineReservationNotice({
       console.error("STEAKLAMP_TABELOG_INSERT_ERROR =", error);
       return json({ ok: false, reason: "insert_failed", error, parsed }, 500);
     }
+await notifyChristmas(String(data.id));
 
 await sendLineReservationNotice({
   name: parsed.name,

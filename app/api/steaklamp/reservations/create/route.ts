@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice } from "@/steaklamp/lib/lineNotify";
+import {
+  isChristmasCourse,
+  isChristmasDate,
+  jstDateKey,
+} from "@/steaklamp/lib/christmas";
+import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
 
 
 export const runtime = "nodejs";
@@ -263,6 +269,21 @@ if (!isAdminCreate && startAt < now) {
 
 if (!isAdminCreate) {
 
+// ===== クリスマスコース対象日の制限 =====
+// 12/24・25は通常コース・席のみを自社ページで受け付けない。
+// クリスマスコースは専用の予約API（/api/steaklamp/christmas/reserve）からのみ受け付ける。
+if (
+  isChristmasDate(jstDateKey(startAt)) ||
+  isChristmasCourse(String(courseName ?? ""))
+) {
+  return json(
+    {
+      ok: false,
+      error: "この日のご予約はクリスマスコース専用ページからお願いいたします。",
+    },
+    400
+  );
+}
 
 // ===== コース受付締切チェック =====
 const courseNameText = String(courseName || "席のみ").trim();
@@ -504,6 +525,19 @@ try {
   });
 } catch (lineError) {
   console.error("line notify failed", lineError);
+}
+
+// 電話予約（管理画面）で入れたクリスマスコースも残り枠に数え、満席・上限超過をLINEで知らせる
+if (isChristmasCourse(inserted.course_name_snapshot)) {
+  try {
+    await afterChristmasReservationSaved({
+      storeId: String(store.id),
+      reservationId: String(inserted.id),
+      sourceLabel: isAdminCreate ? "電話・管理画面" : "自社サイト",
+    });
+  } catch (christmasError) {
+    console.error("christmas capacity notify failed", christmasError);
+  }
 }
 
 

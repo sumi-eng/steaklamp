@@ -15,6 +15,16 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_ID: BUILD_ID,
   },
+  // SNS告知用の短いURL
+  async redirects() {
+    return [
+      {
+        source: "/christmas",
+        destination: "/steaklamp/reserve/christmas",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

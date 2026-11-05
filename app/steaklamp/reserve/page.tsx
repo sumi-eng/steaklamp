@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import SnsLoginPanel from "@/components/steaklamp/SnsLoginPanel";
+import {
+  CHRISTMAS,
+  CHRISTMAS_PRICE_TEXT,
+  dateLabel,
+  isChristmasDate,
+} from "@/steaklamp/lib/christmas";
 
 type Plan = "seat_only" | "course_a" | "course_b" | "course_c";
 
@@ -172,6 +178,12 @@ export default function SteaklampReservePage() {
   const [closureMap, setClosureMap] = useState<Record<string, string>>({});
   const [calendarLoading, setCalendarLoading] = useState(false);
 
+  // クリスマスコースのバナーは、受付終了(12/20 23:59)まで表示する
+  const [showChristmasBanner, setShowChristmasBanner] = useState(false);
+  useEffect(() => {
+    setShowChristmasBanner(Date.now() <= new Date(CHRISTMAS.closesAt).getTime());
+  }, []);
+
   const duration = 120;
   const allTimes = useMemo(() => buildTimes(), []);
   const timeOptions = allTimes;
@@ -327,6 +339,9 @@ export default function SteaklampReservePage() {
   function getCalendarStatus(
     ymd: string
   ): "available" | "few" | "full" | "closed" | "selected" {
+    // クリスマスコース対象日は、通常コース・席のみを受け付けない
+    if (isChristmasDate(ymd)) return "closed";
+
     const item = calendarMap[ymd];
 
     if (!item) {
@@ -347,6 +362,9 @@ export default function SteaklampReservePage() {
     if (!guestName.trim()) return "お名前を入力してください。";
     if (!phone.trim()) return "電話番号を入力してください。";
     if (!date) return "日付を選択してください。";
+    if (isChristmasDate(date)) {
+      return `${dateLabel(date)}はクリスマスコースのみのご案内です。上部のバナーからご予約ください。`;
+    }
     if (!time) return "時間を選択してください。";
 
     const now = new Date();
@@ -534,6 +552,22 @@ export default function SteaklampReservePage() {
           </div>
           <div className="mt-2 text-sm text-stone-600 sm:text-base">ネット予約</div>
         </div>
+
+        {showChristmasBanner ? (
+          <a
+            href="/steaklamp/reserve/christmas"
+            className="mb-6 block rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 shadow-sm transition hover:bg-rose-100 sm:px-8 sm:py-5"
+          >
+            <div className="text-lg font-extrabold text-rose-800 sm:text-xl">
+              🎄 クリスマスコース {CHRISTMAS_PRICE_TEXT}
+            </div>
+            <div className="mt-1 text-sm text-stone-700">
+              {CHRISTMAS.dates.map((d) => dateLabel(d)).join("・")} 限定。
+              12/24・12/25はクリスマスコースのみのご案内です。
+            </div>
+            <div className="mt-2 text-sm font-bold text-rose-700">ご予約はこちら →</div>
+          </a>
+        ) : null}
 
         <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white text-stone-900 shadow-sm">
           <div className="border-b border-stone-100 px-5 py-5 sm:px-8 sm:py-6">

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import SnsLoginPanelEn from "@/components/steaklamp/SnsLoginPanelEn";
+import { isChristmasDate } from "@/steaklamp/lib/christmas";
 
 // NOTE (English duplicate of app/steaklamp/reserve/page.tsx):
 // This page reuses the same backend APIs as the Japanese reservation page,
@@ -391,6 +392,9 @@ export default function SteaklampReservePageEn() {
   function getCalendarStatus(
     ymd: string
   ): "available" | "few" | "full" | "closed" | "selected" {
+    // Dec 24-25 are not bookable on this page (special course only, via the Japanese page)
+    if (isChristmasDate(ymd)) return "closed";
+
     const item = calendarMap[ymd];
 
     if (!item) {
@@ -411,6 +415,9 @@ export default function SteaklampReservePageEn() {
     if (!guestName.trim()) return "Please enter your name.";
     if (!phone.trim()) return "Please enter your phone number.";
     if (!date) return "Please select a date.";
+    if (isChristmasDate(date)) {
+      return "Online reservations are not available on this date. Please choose another date or call the restaurant.";
+    }
     if (!time) return "Please select a time.";
 
     const now = new Date();

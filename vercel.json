@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/steaklamp/cron/christmas-reminder",
+      "schedule": "0 1 * * *"
+    }
+  ]
+}

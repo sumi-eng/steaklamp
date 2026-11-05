@@ -5,6 +5,8 @@ import RefreshButton from "../RefreshButton";
 import { useForegroundRefresh } from "@/steaklamp/hooks/useForegroundRefresh";
 import ReservationCreateModal from "./ReservationCreateModal";
 import ReservationDetailModal from "./ReservationDetailModal";
+import ChristmasDayPanel from "./ChristmasDayPanel";
+import { isChristmasCourse } from "@/steaklamp/lib/christmas";
 
 function formatDateKey(date: Date) {
   const y = date.getFullYear();
@@ -456,6 +458,12 @@ function openClosureModal() {
 </div>
 
 
+        <ChristmasDayPanel
+          reloadTick={reloadTick}
+          currentDateKey={dateKey}
+          onSelectDate={setDateKey}
+        />
+
         <div className="relative mb-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -801,6 +809,12 @@ function openClosureModal() {
 <div className="mt-1 text-[14px] font-bold leading-tight">
   {reservation.title}
 </div>
+
+{isChristmasCourse(reservation.courseNameSnapshot) ? (
+  <div className="mt-1 inline-block rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-extrabold leading-tight text-white">
+    🎄 クリスマス
+  </div>
+) : null}
 
 {reservation.courseNameSnapshot ? (
   <div className="mt-1 text-[12px] font-bold leading-tight text-rose-700">

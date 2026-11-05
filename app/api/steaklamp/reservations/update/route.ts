@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
+import { isChristmasCourse } from "@/steaklamp/lib/christmas";
+import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
 import {
   evaluateSeatAssignment,
   maxCap,
@@ -57,7 +59,7 @@ if (!seatId) return json({ ok: false, error: "seat_required" }, 400);
 
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("reservations")
-      .select("id, store_id, seat_id, persons, start_at, duration_minutes, assignment_status")
+      .select("id, store_id, seat_id, persons, start_at, duration_minutes, assignment_status, course_name_snapshot")
       .eq("id", id)
       .single();
 
@@ -161,6 +163,25 @@ course_price_snapshot: coursePriceSnapshot,
 
     if (error) {
       return json({ ok: false, error: "update_failed", detail: error.message }, 500);
+    }
+
+    // クリスマスコースの日時・人数・コースを変えたときは、残り枠を数え直して満席・上限超過を知らせる
+    const becameChristmas =
+      isChristmasCourse(data?.course_name_snapshot) &&
+      !isChristmasCourse(existing.course_name_snapshot);
+    if (
+      isChristmasCourse(data?.course_name_snapshot) &&
+      (becameChristmas || timeChanged || personsChanged)
+    ) {
+      try {
+        await afterChristmasReservationSaved({
+          storeId: String(existing.store_id),
+          reservationId: String(id),
+          sourceLabel: "管理画面での変更",
+        });
+      } catch (christmasError) {
+        console.error("christmas capacity notify failed", christmasError);
+      }
     }
 
     return json({ ok: true, reservation: data });

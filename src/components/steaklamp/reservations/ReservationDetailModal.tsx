@@ -306,6 +306,7 @@ course_price_snapshot: coursePrice,
       if (value === "Aコース") setCoursePrice(7200);
       else if (value === "Bコース") setCoursePrice(9800);
       else if (value === "Cコース") setCoursePrice(12000);
+      else if (value === "クリスマスコース") setCoursePrice(11000);
       else setCoursePrice(null);
     }}
     className="w-full rounded-2xl border border-stone-300 px-4 py-3"
@@ -314,6 +315,7 @@ course_price_snapshot: coursePrice,
     <option value="Aコース">Aコース 7,200円</option>
     <option value="Bコース">Bコース 9,800円</option>
     <option value="Cコース">Cコース 12,000円</option>
+    <option value="クリスマスコース">クリスマスコース 11,000円</option>
   </select>
 </label>
 

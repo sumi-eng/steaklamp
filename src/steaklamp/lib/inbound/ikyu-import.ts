@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
+import { inferChristmasCourse, isChristmasCourse } from "@/steaklamp/lib/christmas";
+import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
 import { findSeat } from "./hotpepper-import";
 import { detectSeatKind } from "./hotpepper-parser";
 import { capacityMismatchMessage, noSeatMessage } from "./seat-allocation";
@@ -27,8 +29,12 @@ function extractPlanPrice(planName: string) {
   return amounts.length > 0 ? Math.max(...amounts) : null;
 }
 
-function inferCourse(planNameRaw: string | null | undefined) {
+export function inferCourse(planNameRaw: string | null | undefined) {
   const planName = normalizePlanName(planNameRaw);
+
+  // クリスマスコース(11,000円)は、金額で判定するとCコースの旧価格と重なるため最初に判定する
+  const christmas = inferChristmasCourse(planName);
+  if (christmas) return christmas;
 
   const price = extractPlanPrice(planName);
 
@@ -56,6 +62,20 @@ function inferCourse(planNameRaw: string | null | undefined) {
     courseName: planName || "席のみ",
     coursePrice: null,
   };
+}
+
+// クリスマスコースなら、残り枠を数え直して満席・上限超過・残り1組をLINEで知らせる
+async function notifyChristmasCapacity(
+  storeId: string,
+  reservationId: string,
+  courseName: string | null | undefined
+) {
+  if (!isChristmasCourse(courseName)) return;
+  try {
+    await afterChristmasReservationSaved({ storeId, reservationId, sourceLabel: "一休" });
+  } catch (e) {
+    console.error("christmas capacity notify failed", e);
+  }
 }
 
 export async function importIkyuReservationFromText(args: {
@@ -353,6 +373,7 @@ const noteLines = [
       };
     }
 
+    await notifyChristmasCapacity(store.id, updateRes.data.id, course.courseName);
     await sendLineReservationNotice(lineNotice);
 
     return {
@@ -385,6 +406,7 @@ const noteLines = [
     };
   }
 
+  await notifyChristmasCapacity(store.id, insertRes.data.id, course.courseName);
   await sendLineReservationNotice(lineNotice);
 
   return {
