@@ -79,6 +79,7 @@ type RowDef = {
 type DayReservation = {
   id: string;
   seatId: string;
+  seatIds?: string[];
   dateKey: string;
   title: string;
   name?: string;
@@ -788,13 +789,20 @@ function openClosureModal() {
 
                 if (rowIndexes.length === 0) return null;
 
-                const topRow = rowIndexes[0];
-                const bottomRow = rowIndexes[rowIndexes.length - 1];
+                // 連結した席が離れているときは、間の席をまたがず、連続する行ごとにブロックを分けて表示する
+                const runs: Array<[number, number]> = [];
+                for (const idx of rowIndexes) {
+                  const last = runs[runs.length - 1];
+                  if (last && idx === last[1] + 1) last[1] = idx;
+                  else runs.push([idx, idx]);
+                }
+
+                return runs.map(([topRow, bottomRow], runIndex) => {
                 const rowSpan = bottomRow - topRow + 1;
 
                 return (
                   <div
-                    key={reservation.id}
+                    key={`${reservation.id}-${runIndex}`}
                     onClick={() => setSelectedReservation(reservation)}
                     className="absolute cursor-pointer rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800 shadow-sm hover:ring-2 hover:ring-rose-200"
                     style={{
@@ -835,6 +843,7 @@ function openClosureModal() {
 
                   </div>
                 );
+                });
               })}
             </div>
           </div>
@@ -900,6 +909,7 @@ function openClosureModal() {
             reservation={{
               id: selectedReservation.id,
               seatId: selectedReservation.seatId,
+              seatIds: selectedReservation.seatIds,
               title: selectedReservation.title,
               name: selectedReservation.name ?? selectedReservation.title,
               phone: selectedReservation.phone,

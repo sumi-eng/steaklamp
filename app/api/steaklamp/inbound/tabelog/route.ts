@@ -3,7 +3,18 @@ import { Resend } from "resend";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { extractMailContent } from "@/steaklamp/lib/inbound/mail-body";
 import { parseTabelogReservationMail } from "@/steaklamp/lib/inbound/tabelog-parser";
-import { capacityMismatchMessage, noSeatMessage, type NoSeatReason } from "@/steaklamp/lib/inbound/seat-allocation";
+import {
+  capacityMismatchMessage,
+  effectiveSeatIds,
+  judgeLinkedCapacity,
+  linkedSeatMismatchMessage,
+  noSeatMessage,
+  physicalIdsOf,
+  reservationPhysicalSeatIds,
+  seatLabelOf,
+  type NoSeatReason,
+} from "@/steaklamp/lib/inbound/seat-allocation";
+import { clearSeatLinks, loadSeatLinks } from "@/steaklamp/lib/reservationSeats";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
 import { inferChristmasCourse } from "@/steaklamp/lib/christmas";
 import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
@@ -111,6 +122,8 @@ async function findAvailableSeat(args: {
   if (reservationsError) throw reservationsError;
 
   const occupiedPhysicalSeatIds = new Set<string>();
+  // 他の予約の自由連結。変更される予約自身の連結も読み込む(窓の外の日時でも維持判定できるように)
+  const seatLinks = await loadSeatLinks([...(reservations ?? []).map((r: any) => r.id), excludeReservationId]);
 
   for (const r of reservations ?? []) {
     if (!r.seat_id || !r.start_at) continue;
@@ -123,7 +136,7 @@ async function findAvailableSeat(args: {
 
     if (!overlaps(startAt, endAt, rStart, rEnd)) continue;
 
-    const physicalIds = expandPhysicalSeatIds(String(r.seat_id), members);
+    const physicalIds = reservationPhysicalSeatIds(r, members, seatLinks);
     for (const id of physicalIds) {
       occupiedPhysicalSeatIds.add(id);
     }
@@ -138,8 +151,33 @@ async function findAvailableSeat(args: {
   const isFree = (seat: any) =>
     !hasSeatConflict(expandPhysicalSeatIds(String(seat.id), members), occupiedPhysicalSeatIds);
 
+  // 連結した席は、連結したすべての席が空いているときだけ維持する(1席でも埋まっていれば選び直す)
+  const preferSeatIds =
+    preferSeatId && excludeReservationId
+      ? effectiveSeatIds({ id: excludeReservationId, seat_id: preferSeatId }, seatLinks)
+      : [];
+  if (preferSeatIds.length > 1) {
+    const rep = activeSeats.find((s: any) => String(s.id) === preferSeatIds[0]);
+    const allExist = preferSeatIds.every((id) => activeSeats.some((s: any) => String(s.id) === id));
+    const physical = physicalIdsOf(preferSeatIds, members);
+    if (rep && allExist && !hasSeatConflict(physical, occupiedPhysicalSeatIds)) {
+      let totalMax = 0;
+      for (const pid of physical) {
+        const ps = (seats ?? []).find((s: any) => String(s.id) === pid);
+        if (ps) totalMax += maxCap(ps);
+      }
+      return {
+        seat: rep,
+        reason: null as NoSeatReason | null,
+        capacityMismatch: judgeLinkedCapacity(persons, totalMax) !== null,
+        keptSeatIds: preferSeatIds as string[] | undefined,
+        seatLabel: seatLabelOf(preferSeatIds, (seats ?? []) as any[]) as string | undefined,
+      };
+    }
+  }
+
   // 変更メールで、元の席が新しい日時・人数でも空いていればそのまま維持する
-  if (preferSeatId) {
+  if (preferSeatIds.length <= 1 && preferSeatId) {
     const preferred = activeSeats.find((s: any) => String(s.id) === String(preferSeatId));
     // 人数が席の定員から外れていても、スタッフが手動で入れた席の可能性があるため、空いていれば維持する
     if (preferred && isFree(preferred)) {
@@ -147,6 +185,8 @@ async function findAvailableSeat(args: {
         seat: preferred,
         reason: null as NoSeatReason | null,
         capacityMismatch: persons < minCap(preferred) || persons > maxCap(preferred),
+        keptSeatIds: undefined as string[] | undefined,
+        seatLabel: undefined as string | undefined,
       };
     }
   }
@@ -173,11 +213,20 @@ async function findAvailableSeat(args: {
       return Number(a.sort_order ?? 9999) - Number(b.sort_order ?? 9999);
     });
 
-  if (candidates[0]) return { seat: candidates[0], reason: null as NoSeatReason | null };
+  if (candidates[0]) {
+    return {
+      seat: candidates[0],
+      reason: null as NoSeatReason | null,
+      keptSeatIds: undefined as string[] | undefined,
+      seatLabel: undefined as string | undefined,
+    };
+  }
 
   return {
     seat: null,
     reason: (fitting.length > 0 ? "full" : "capacity") as NoSeatReason | null,
+    keptSeatIds: undefined as string[] | undefined,
+    seatLabel: undefined as string | undefined,
   };
 }
 
@@ -413,11 +462,17 @@ export async function POST(req: NextRequest) {
 
 const warningMessage = selectedSeat
   ? "capacityMismatch" in seatChoice && seatChoice.capacityMismatch
-    ? capacityMismatchMessage({
-        seat: selectedSeat as any,
-        persons: parsed.persons,
-        sourceLabel: "食べログ",
-      })
+    ? seatChoice.keptSeatIds
+      ? linkedSeatMismatchMessage({
+          label: seatChoice.seatLabel ?? String((selectedSeat as any).name),
+          persons: parsed.persons,
+          sourceLabel: "食べログ",
+        })
+      : capacityMismatchMessage({
+          seat: selectedSeat as any,
+          persons: parsed.persons,
+          sourceLabel: "食べログ",
+        })
     : null
   : !seatChoice.reason
     ? null
@@ -492,6 +547,10 @@ warning_message: warningMessage,
         console.error("STEAKLAMP_TABELOG_UPDATE_ERROR =", error);
         return json({ ok: false, reason: "update_failed", error, parsed }, 500);
       }
+// 席が決まり直した（連結を維持しなかった）ときは、古い連結を消して席が埋まったままにならないようにする
+if (!seatChoice.keptSeatIds) {
+  await clearSeatLinks(String(data.id));
+}
 await notifyChristmas(String(data.id));
 await sendLineReservationNotice({
   name: parsed.name,
@@ -499,7 +558,7 @@ await sendLineReservationNotice({
   email: null,
   persons: parsed.persons,
   start_at: startAt.toISOString(),
-  seatName: selectedSeat?.name ?? "未割当",
+  seatName: seatChoice.seatLabel ?? selectedSeat?.name ?? "未割当",
   courseName: parsed.planName ?? "席のみ",
   notes: notesText,
   source: "食べログ",

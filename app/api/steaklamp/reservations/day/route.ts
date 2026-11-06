@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
+import { effectiveSeatIds, seatLabelOf } from "@/steaklamp/lib/inbound/seat-allocation";
+import { loadSeatLinks } from "@/steaklamp/lib/reservationSeats";
 
 export const runtime = "nodejs";
 
@@ -133,6 +135,13 @@ export async function GET(req: Request) {
       capacityLabel: `${maxCap(seat)}名`,
     }));
 
+    let seatLinks;
+    try {
+      seatLinks = await loadSeatLinks((reservations ?? []).map((r) => r.id));
+    } catch (e) {
+      return json({ ok: false, error: "seat_links_load_failed" }, 500);
+    }
+
     const items = (reservations ?? [])
       .filter((r) => {
         const status = String(r.status ?? "booked");
@@ -144,22 +153,32 @@ export async function GET(req: Request) {
         const duration = Number(r.duration_minutes ?? 120);
         const slots = Math.max(1, Math.ceil(duration / 15));
 
-        let rowIds: string[] = [];
+        // 自由連結した予約は、連結したすべての席の行に表示する（先頭が代表席）
+        const linkedSeatIds = effectiveSeatIds(r, seatLinks);
+        const rowIdSet = new Set<string>();
 
-        if (seat && groupParentSeatIds.has(String(seat.id))) {
-          rowIds = members
-            .filter((m) => String(m.group_seat_id) === String(seat.id))
-            .map((m) => String(m.member_seat_id))
-            .filter((id) => physicalSeatIds.has(id));
-        } else if (r.seat_id) {
-          rowIds = [String(r.seat_id)].filter((id) =>
-            physicalSeatIds.has(id)
-          );
+        for (const sid of linkedSeatIds) {
+          if (groupParentSeatIds.has(sid)) {
+            for (const m of members) {
+              if (String(m.group_seat_id) === sid && physicalSeatIds.has(String(m.member_seat_id))) {
+                rowIdSet.add(String(m.member_seat_id));
+              }
+            }
+          } else if (physicalSeatIds.has(sid)) {
+            rowIdSet.add(sid);
+          }
         }
+        const rowIds = Array.from(rowIdSet);
+        const isLinked = linkedSeatIds.length > 1;
+        const seatLabel = isLinked
+          ? seatLabelOf(linkedSeatIds, allSeats)
+          : seat?.name ?? "";
 
        return {
   id: String(r.id),
 seatId: String(r.seat_id ?? ""),
+  // 連結した席すべて（連結なしなら代表席だけ）。先頭が代表席
+  seatIds: linkedSeatIds,
 
   dateKey: toDateKey(start),
   title: String(r.name ?? "予約"),
@@ -171,7 +190,7 @@ seatId: String(r.seat_id ?? ""),
   startAt: r.start_at,
   durationMinutes: duration,
   slots,
-  seatName: seat?.name ?? "",
+  seatName: seatLabel,
   status: String(r.status ?? "booked"),
   notes: r.notes ?? null,
 assignmentStatus: String(r.assignment_status ?? "assigned"),

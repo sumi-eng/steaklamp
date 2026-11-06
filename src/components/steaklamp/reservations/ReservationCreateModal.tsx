@@ -2,7 +2,8 @@
 
 import { adminFetch } from "@/steaklamp/lib/adminClient";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
+import SeatPicker from "./SeatPicker";
 
 type Props = {
   defaultDateKey: string;
@@ -10,19 +11,8 @@ type Props = {
   onCreated: () => void;
 };
 
-type CandidateSeat = {
-  id: string;
-  name: string;
-  capacityLabel: string;
-  physicalSeats: string;
-};
-
 function toLocalDatetimeValue(dateKey: string) {
   return `${dateKey}T18:00`;
-}
-
-function formatSeatLabel(seat: CandidateSeat) {
-  return `${seat.name}（${seat.capacityLabel}）`;
 }
 
 export default function ReservationCreateModal({
@@ -43,89 +33,24 @@ const [courseName, setCourseName] = useState("席のみ");
 const [coursePrice, setCoursePrice] = useState<number | null>(null);
 
 
-  const [candidates, setCandidates] = useState<CandidateSeat[]>([]);
-  const [selectedSeatId, setSelectedSeatId] = useState("");
-  const [loadingSeats, setLoadingSeats] = useState(false);
-  const [seatMessage, setSeatMessage] = useState("");
+  // 選んだ席（先頭が代表席）。複数なら連結
+  const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
 
-const [creating, setCreating] = useState(false);
-const lastSearchKeyRef = useRef("");
-
-
-  const canSearchSeats = useMemo(() => {
-    return persons > 0 && !!startAt && duration > 0;
-  }, [persons, startAt, duration]);
-
- useEffect(() => {
-  setSelectedSeatId("");
-  setCandidates([]);
-  setSeatMessage("");
-  lastSearchKeyRef.current = "";
-}, [persons, startAt, duration, counterOk]);
-
-useEffect(() => {
-  loadSeatCandidates();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [persons, startAt, duration, counterOk]);
-
-
-
-  async function loadSeatCandidates() {
-  if (!canSearchSeats) {
-    setCandidates([]);
-    setSeatMessage("先に日時・人数・滞在時間を入力してください。");
-    return;
+  // 日時・滞在時間を変えたら、空きが変わるので席を選び直す
+  function changeStartAt(value: string) {
+    setStartAt(value);
+    setSelectedSeatIds([]);
   }
-
-  const searchKey = JSON.stringify({
-    persons,
-    startAt,
-    duration,
-    counterOk,
-  });
-
-  if (loadingSeats) return;
-  if (lastSearchKeyRef.current === searchKey && candidates.length > 0) return;
-
-  lastSearchKeyRef.current = searchKey;
-  setLoadingSeats(true);
-  setSeatMessage("");
-
-  try {
-    const res = await adminFetch("/api/steaklamp/seats/search", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        persons,
-        startAt,
-        duration,
-        counterOk,
-      }),
-    });
-
-    const data = await res.json();
-    const seats = data.seats || [];
-
-    setCandidates(seats);
-
-    if (seats.length === 0) {
-      setSeatMessage("条件に合う候補席がありません。");
-    }
-  } catch (e) {
-    setCandidates([]);
-    setSeatMessage("候補席の取得に失敗しました。");
-  } finally {
-    setLoadingSeats(false);
+  function changeDuration(value: number) {
+    setDuration(value);
+    setSelectedSeatIds([]);
   }
-}
-
 
  async function handleCreate() {
   if (creating) return;
 
-  if (!selectedSeatId) {
+  if (selectedSeatIds.length === 0) {
     alert("席を選択してください");
     return;
   }
@@ -133,31 +58,42 @@ useEffect(() => {
   setCreating(true);
 
   try {
-    const res = await adminFetch("/api/steaklamp/reservations/create", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        phone,
-        email,
-        persons,
-        startAt,
-        duration,
-        notes,
-        counterOk,
-        seatId: selectedSeatId,
-        course_name_snapshot: courseName,
-        course_price_snapshot: coursePrice,
-        source: "admin",
-      }),
-    });
+    const send = (confirmCapacityMismatch: boolean) =>
+      adminFetch("/api/steaklamp/reservations/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          phone,
+          email,
+          persons,
+          startAt,
+          duration,
+          notes,
+          counterOk,
+          seatIds: selectedSeatIds,
+          confirmCapacityMismatch,
+          course_name_snapshot: courseName,
+          course_price_snapshot: coursePrice,
+          source: "admin",
+        }),
+      });
 
-    const data = await res.json();
+    let res = await send(false);
+    let data = await res.json();
+
+    // 席が足りない・取りすぎのときは、確認してから登録する
+    if (data.error === "persons_out_of_range") {
+      if (!confirm(`${data.detail}
+このまま登録しますか？`)) return;
+      res = await send(true);
+      data = await res.json();
+    }
 
     if (!res.ok) {
-      alert(data.error || "予約作成に失敗しました");
+      alert(data.detail || data.error || "予約作成に失敗しました");
       return;
     }
 
@@ -170,8 +106,6 @@ useEffect(() => {
   }
 }
 
-
-  const selectedSeat = candidates.find((seat) => seat.id === selectedSeatId) || null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4">
@@ -202,7 +136,7 @@ useEffect(() => {
                   value={startAt.slice(0, 10)}
                   onChange={(e) => {
                     const timePart = startAt.slice(11, 16) || "18:00";
-                    setStartAt(`${e.target.value}T${timePart}`);
+                    changeStartAt(`${e.target.value}T${timePart}`);
                   }}
                   className="w-full rounded-2xl border border-stone-300 px-4 py-3 outline-none focus:border-stone-500"
                 />
@@ -214,7 +148,7 @@ useEffect(() => {
   value={startAt.slice(11, 16)}
   onChange={(e) => {
     const datePart = startAt.slice(0, 10);
-    setStartAt(`${datePart}T${e.target.value}`);
+    changeStartAt(`${datePart}T${e.target.value}`);
   }}
   className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none focus:border-stone-500"
 >
@@ -237,51 +171,21 @@ useEffect(() => {
 
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-bold text-stone-800">席</label>
-                <select
-                  value={selectedSeatId}
-                  onChange={(e) => setSelectedSeatId(e.target.value)}
-                                    className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none focus:border-stone-500"
-                >
-                  <option value="">
-                    {loadingSeats
-                      ? "候補席を読み込み中..."
-                      : candidates.length > 0
-                      ? "候補席を選択してください"
-                      : "席を選択"}
-                  </option>
-
-                  {candidates.map((seat) => (
-                    <option key={seat.id} value={seat.id}>
-                      {formatSeatLabel(seat)}
-                    </option>
-                  ))}
-                </select>
-
-                <div className="mt-2 text-sm text-stone-500">
-                  入店中・重複予約のある席は候補から除外しています。
-                </div>
-
-                {seatMessage && (
-                  <div className="mt-2 text-sm text-amber-700">{seatMessage}</div>
-                )}
-
-                {selectedSeat && (
-                  <div className="mt-3 rounded-2xl bg-stone-50 px-4 py-3 text-sm text-stone-700">
-                    <div>
-                      <span className="font-semibold">物理席:</span>{" "}
-                      {selectedSeat.physicalSeats}
-                    </div>
-                  </div>
-                )}
+              <div className="md:col-span-2">
+                <SeatPicker
+                  persons={persons}
+                  startAt={startAt}
+                  duration={duration}
+                  value={selectedSeatIds}
+                  onChange={setSelectedSeatIds}
+                />
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-bold text-stone-800">時間</label>
                 <select
                   value={String(duration)}
-                  onChange={(e) => setDuration(Number(e.target.value))}
+                  onChange={(e) => changeDuration(Number(e.target.value))}
                   className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none focus:border-stone-500"
                 >
                   <option value="90">90分</option>

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice } from "@/steaklamp/lib/lineNotify";
+import { effectiveSeatIds, seatLabelOf } from "@/steaklamp/lib/inbound/seat-allocation";
+import { loadSeatLinks } from "@/steaklamp/lib/reservationSeats";
 
 
 export const runtime = "nodejs";
@@ -79,6 +81,22 @@ const { data: seat } = await supabaseAdmin
   .eq("id", updated.seat_id)
   .maybeSingle();
 
+// 自由連結した予約は、LINE通知の席名に連結した席をすべて並べる
+let seatLabel: string | null = seat?.name ?? null;
+try {
+  const links = await loadSeatLinks([updated.id]);
+  const linkedIds = effectiveSeatIds(updated, links);
+  if (linkedIds.length > 1) {
+    const { data: linkedSeats } = await supabaseAdmin
+      .from("seats")
+      .select("id, name, sort_order")
+      .in("id", linkedIds);
+    seatLabel = seatLabelOf(linkedIds, (linkedSeats ?? []) as any[]) || seatLabel;
+  }
+} catch (e) {
+  console.error("cancel seat label failed", e);
+}
+
 try {
   await sendLineReservationNotice({
     name: updated.name,
@@ -86,7 +104,7 @@ try {
     email: updated.email,
     persons: updated.persons,
     start_at: updated.start_at,
-    seatName: seat?.name ?? null,
+    seatName: seatLabel,
     courseName: updated.course_name_snapshot,
     notes: updated.notes,
     source: "キャンセル",

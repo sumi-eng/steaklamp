@@ -27,7 +27,8 @@ import { GET as dayGet } from "../../../../app/api/steaklamp/reservations/day/ro
 import { POST as closuresPost } from "../../../../app/api/steaklamp/closures/route";
 import { POST as createPost } from "../../../../app/api/steaklamp/reservations/create/route";
 import { POST as seatsSearchPost } from "../../../../app/api/steaklamp/seats/search/route";
-import { GET as seatsAdminGet } from "../../../../app/api/steaklamp/admin/seats/route";
+import { GET as seatsAdminGet, DELETE as seatsAdminDelete } from "../../../../app/api/steaklamp/admin/seats/route";
+import { POST as updatePost } from "../../../../app/api/steaklamp/reservations/update/route";
 
 const OWNER = { email: "owner@example.com", provider: "google" };
 
@@ -111,6 +112,53 @@ describe("enforce：未ログインで管理用APIを呼ぶと拒否され、DB�
   it("席の設定", async () => {
     const res = await seatsAdminGet();
     expect(res.status).toBe(401);
+    expect(dbCalls).toEqual([]);
+  });
+
+  it("席の削除（連結に使われている席の削除チェックを含む）", async () => {
+    const res = await seatsAdminDelete(
+      new Request("http://localhost/api", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: "11111111-2222-3333-4444-555555555555" }),
+      })
+    );
+    expect(res.status).toBe(401);
+    expect(dbCalls).toEqual([]);
+  });
+
+  it("席を連結する予約の変更", async () => {
+    const res = await updatePost(post({ id: "r1", seatIds: ["a", "b"] }));
+    expect(res.status).toBe(401);
+    expect(dbCalls).toEqual([]);
+  });
+
+  it("source:admin で席を連結した予約作成", async () => {
+    const res = await createPost(
+      post({
+        source: "admin",
+        name: "テスト",
+        phone: "09012345678",
+        persons: 4,
+        startAt: "2020-01-01T18:00",
+        seatIds: ["s1", "s2"],
+      })
+    );
+    expect(res.status).toBe(401);
+    expect(dbCalls).toEqual([]);
+  });
+
+  it("お客様の予約ページから席の連結を指定しても、DBに触れる前に拒否される（enforceでなくても）", async () => {
+    const res = await createPost(
+      post({
+        name: "お客様",
+        phone: "09012345678",
+        persons: 4,
+        startAt: "2099-01-01T18:00",
+        seatIds: ["s1", "s2"],
+      })
+    );
+    expect(res.status).toBe(403);
     expect(dbCalls).toEqual([]);
   });
 

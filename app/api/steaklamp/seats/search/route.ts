@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { requireAdmin } from "@/steaklamp/lib/adminAuth";
+import { effectiveSeatIds } from "@/steaklamp/lib/inbound/seat-allocation";
+import { loadSeatLinks } from "@/steaklamp/lib/reservationSeats";
 
 export const runtime = "nodejs";
 
@@ -261,6 +263,14 @@ if (closure) {
       );
     }
 
+    let seatLinks;
+    try {
+      seatLinks = await loadSeatLinks((reservations ?? []).map((r: any) => r.id));
+    } catch (e) {
+      console.error("seatLinks load error", e);
+      return json({ ok: false, error: "seat_links_load_failed" }, 500);
+    }
+
     // 予約済みの「実際に使っている物理席」だけを集める
     const occupiedPhysicalSeatIds = new Set<string>();
     // 物理席ID -> その席を使っている予約の名前（重なり表示用）
@@ -278,9 +288,13 @@ if (closure) {
 
       if (!overlaps(startAt, endAt, rStart, rEnd)) continue;
 
-      const reservedPhysicalSeatIds = expandPhysicalSeatIds(String(r.seat_id), members, typedSeats)
-
-      ;
+      // 自由連結した予約は、連結したすべての席を使用中として数える
+      const reservedPhysicalSeatIds = new Set<string>();
+      for (const sid of effectiveSeatIds(r, seatLinks)) {
+        for (const pid of expandPhysicalSeatIds(sid, members, typedSeats)) {
+          reservedPhysicalSeatIds.add(pid);
+        }
+      }
 
       for (const id of reservedPhysicalSeatIds) {
         occupiedPhysicalSeatIds.add(id);
@@ -297,8 +311,9 @@ if (closure) {
         if (includeAll) {
           // 席変更では、物理席(T1-1など)以外のすべての席を選べる。1名のカウンター連結席だけは除く。
           const n = String(seat.name ?? "");
-          if (/^Td+-d+$/.test(n)) return false;
-          if (persons <= 1 && /^C-d+/.test(n)) return false;
+          // 物理席(T1-1・C1など)は、下の「physical」から1席ずつ選ぶ
+          if (/^T\d+-\d+$/.test(n) || /^C\d+$/.test(n)) return false;
+          if (persons <= 1 && /^C-\d+/.test(n)) return false;
           return true;
         }
 
@@ -365,14 +380,46 @@ if (persons >= 7 && isSixSeatGroup) return false;
           name: seat.name,
           capacityLabel: `${minCap(seat)}〜${maxCap(seat)}名`,
           physicalSeats,
-          kind: /^Cd+$|^C-d+/.test(seatName) ? "counter" : "table",
+          kind: /^C\d+$|^C-\d+/.test(seatName) ? "counter" : "table",
           free: conflictWith === null,
           fitsPersons: persons >= minCap(seat) && persons <= maxCap(seat),
           conflictWith,
         };
       });
 
-    return json({ ok: true, seats: result });
+    // 席変更（管理者）用: 自由連結で選べる物理席と、グループ席の構成も返す
+    let physical: unknown[] | undefined;
+    let groups: unknown[] | undefined;
+    if (includeAll) {
+      const activeAll = ((seats ?? []) as SeatRow[]).filter((s) => s.is_active !== false);
+      physical = activeAll
+        .filter((s) => /^T\d+-\d+$/.test(String(s.name)) || /^C\d+$/.test(String(s.name)))
+        .sort((a, b) => {
+          const ao = Number(a.sort_order ?? 9999);
+          const bo = Number(b.sort_order ?? 9999);
+          if (ao !== bo) return ao - bo;
+          return String(a.name).localeCompare(String(b.name), "ja");
+        })
+        .map((s) => {
+          const id = String(s.id);
+          return {
+            id,
+            name: s.name,
+            kind: /^C\d+$/.test(String(s.name)) ? "counter" : "table",
+            maxPersons: maxCap(s),
+            free: !occupiedPhysicalSeatIds.has(id),
+            conflictWith: occupiedPhysicalSeatIds.has(id) ? occupiedByName.get(id) ?? "予約" : null,
+          };
+        });
+      groups = result.map((g) => ({
+        id: g.id,
+        memberIds: members
+          .filter((m) => String(m.group_seat_id) === String(g.id))
+          .map((m) => String(m.member_seat_id)),
+      }));
+    }
+
+    return json({ ok: true, seats: result, physical, groups });
   } catch (e) {
     console.error("unexpected seats/search error", e);
     return json(

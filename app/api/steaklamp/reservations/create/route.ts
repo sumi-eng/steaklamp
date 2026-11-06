@@ -9,6 +9,15 @@ import {
   jstDateKey,
 } from "@/steaklamp/lib/christmas";
 import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
+import { loadSeatLinks, replaceSeatLinks } from "@/steaklamp/lib/reservationSeats";
+import {
+  evaluateSeatSelection,
+  normalizeSeatIds,
+  seatLabelOf,
+  type ReservationRow,
+  type SeatMemberRow,
+  type SeatRow,
+} from "@/steaklamp/lib/inbound/seat-allocation";
 
 
 export const runtime = "nodejs";
@@ -55,10 +64,6 @@ function toJstDate(raw: string) {
 }
 
 
-function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
-  return aStart < bEnd && bStart < aEnd;
-}
-
 function formatDateTimeJp(value: string) {
   const d = new Date(value);
   return d.toLocaleString("ja-JP", {
@@ -69,31 +74,6 @@ function formatDateTimeJp(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-type SeatMemberRow = {
-  group_seat_id: string;
-  member_seat_id: string;
-};
-
-// 親席IDではなく、実際に使う物理席IDだけに展開する
-function expandPhysicalSeatIds(seatId: string, members: SeatMemberRow[]) {
-  const childIds = members
-    .filter((m) => String(m.group_seat_id) === String(seatId))
-    .map((m) => String(m.member_seat_id));
-
-  if (childIds.length > 0) {
-    return new Set(childIds);
-  }
-
-  return new Set([String(seatId)]);
-}
-
-function hasSeatConflict(a: Set<string>, b: Set<string>) {
-  for (const id of a) {
-    if (b.has(id)) return true;
-  }
-  return false;
 }
 
 function formatPrice(value: unknown) {
@@ -237,7 +217,12 @@ export async function POST(req: Request) {
     const startAtRaw = String(body.startAt ?? "");
     const duration = Number(body.duration ?? 120);
     const notes = body.notes ? String(body.notes) : null;
-    const seatId = String(body.seatId ?? "");
+    // 席の自由連結（seatIds が2席以上）はスタッフ（source:"admin"）だけが使える。先頭が代表席。
+    let seatIds = normalizeSeatIds(body.seatIds);
+    if (seatIds.length === 0 && body.seatId) seatIds = [String(body.seatId).trim()];
+    const isLinked = seatIds.length > 1;
+    const seatId = seatIds[0] ?? "";
+    const confirmCapacityMismatch = body.confirmCapacityMismatch === true;
     const counterOk = Boolean(body.counterOk ?? false);
 
 const source = String(body.source ?? "web");
@@ -248,6 +233,11 @@ const isAdminCreate = source === "admin";
 if (isAdminCreate) {
   const denied = await requireAdmin("reservations/create(source=admin)");
   if (denied) return denied;
+}
+
+// お客様の予約ページ（source:"web" など）から席の連結は受け付けない
+if (isLinked && !isAdminCreate) {
+  return json({ ok: false, error: "seat_link_admin_only" }, 403);
 }
 
 
@@ -395,18 +385,25 @@ if (closure) {
 }
 
 
-    const { data: seat, error: seatError } = await supabaseAdmin
+    const { data: seatRows, error: seatError } = await supabaseAdmin
       .from("seats")
-      .select("id, name")
-      .eq("id", seatId)
-      .single();
+      .select("*")
+      .eq("store_id", store.id);
 
-    if (seatError || !seat) {
+    if (seatError) {
       return json(
-        { ok: false, error: "seat_not_found", detail: seatError?.message },
+        { ok: false, error: "seat_not_found", detail: seatError.message },
         404
       );
     }
+
+    const allSeats = (seatRows ?? []) as SeatRow[];
+    const chosenSeats = seatIds.map((sid) => allSeats.find((s) => String(s.id) === sid));
+    if (chosenSeats.some((s) => !s || (isLinked && s.is_active === false))) {
+      return json({ ok: false, error: "seat_not_found" }, 404);
+    }
+    // 通知・メールの「お席」表示。連結なら「T1-1・T1-2・C3」
+    const seat = { id: seatId, name: seatLabelOf(seatIds, allSeats) };
 
     const { data: reservations, error: reservationsError } = await supabaseAdmin
       .from("reservations")
@@ -442,33 +439,49 @@ if (closure) {
     }
 
     const members = (seatMembers ?? []) as SeatMemberRow[];
-    const targetPhysicalSeatIds = expandPhysicalSeatIds(seatId, members);
 
-    for (const r of reservations ?? []) {
-      if (!r.start_at || !r.seat_id) continue;
-      if (["cancelled", "finished", "no_show"].includes(String(r.status))) {
-        continue;
-      }
-
-      const rStart = new Date(r.start_at);
-      const rEnd = addMinutes(rStart, Number(r.duration_minutes ?? 120));
-
-      if (!overlaps(startAt, endAt, rStart, rEnd)) continue;
-
-      const reservedPhysicalSeatIds = expandPhysicalSeatIds(
-        String(r.seat_id),
-        members
+    let seatLinks;
+    try {
+      seatLinks = await loadSeatLinks((reservations ?? []).map((r: any) => r.id));
+    } catch (e) {
+      return json(
+        { ok: false, error: "seat_links_load_failed", detail: e instanceof Error ? e.message : "unknown" },
+        500
       );
+    }
 
-      if (hasSeatConflict(targetPhysicalSeatIds, reservedPhysicalSeatIds)) {
-        return json(
-          {
-            ok: false,
-            error: "この席はすでに予約されています",
-          },
-          400
-        );
-      }
+    // 選んだ席のどれか1つでも、同じ時間帯の他の予約と重なれば登録しない
+    const evaluation = evaluateSeatSelection({
+      seatIds,
+      seats: allSeats,
+      members,
+      reservations: (reservations ?? []) as ReservationRow[],
+      seatLinks,
+      persons,
+      startAt,
+      duration,
+    });
+
+    if (evaluation.conflicts.length > 0) {
+      return json(
+        {
+          ok: false,
+          error: "この席はすでに予約されています",
+        },
+        400
+      );
+    }
+
+    // 連結では、席が足りない・取りすぎのときはスタッフが確認したときだけ登録する
+    if (isLinked && !evaluation.fitsPersons && !confirmCapacityMismatch) {
+      return json(
+        {
+          ok: false,
+          error: "persons_out_of_range",
+          detail: evaluation.message ?? `${evaluation.label} は${persons}名には合わない席です。`,
+        },
+        409
+      );
     }
 
     const cancelToken = createCancelToken();
@@ -507,6 +520,20 @@ if (closure) {
         },
         500
       );
+    }
+
+    if (isLinked) {
+      try {
+        await replaceSeatLinks(String(inserted.id), seatIds);
+      } catch (linkError) {
+        // 連結が保存できなかったら、席が足りない予約が残らないよう登録自体を取り消す
+        console.error("save reservation_seats failed", linkError);
+        await supabaseAdmin.from("reservations").delete().eq("id", inserted.id);
+        return json(
+          { ok: false, error: "seat_link_failed", detail: "席の連結の保存に失敗したため、予約を登録しませんでした。" },
+          500
+        );
+      }
     }
 
     try {

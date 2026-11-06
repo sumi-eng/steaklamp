@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
+import { effectiveSeatIds } from "@/steaklamp/lib/inbound/seat-allocation";
+import { loadSeatLinks } from "@/steaklamp/lib/reservationSeats";
 
 export const runtime = "nodejs";
 
@@ -161,6 +163,13 @@ const todayKey = todayJstDateKey();
       );
     }
 
+    let seatLinks;
+    try {
+      seatLinks = await loadSeatLinks((reservations ?? []).map((r: any) => r.id));
+    } catch (e) {
+      return json({ ok: false, error: "seat_links_load_failed" }, 500);
+    }
+
     const hoursByWeekday = new Map(
       (businessHours ?? []).map((h: any) => [Number(h.weekday), h])
     );
@@ -255,7 +264,13 @@ if (dateKey < todayKey) {
           const rEnd = addMinutes(rStart, Number(r.duration_minutes ?? 120));
 
           if (overlaps(startAt, endAt, rStart, rEnd)) {
-            conflictSeatIds.add(String(r.seat_id));
+            // 自由連結した予約は、連結したすべての席（グループ席なら構成する物理席も）を使用中として数える
+            for (const sid of effectiveSeatIds(r, seatLinks)) {
+              conflictSeatIds.add(sid);
+              for (const memberId of memberIdsByGroup.get(sid) ?? []) {
+                conflictSeatIds.add(memberId);
+              }
+            }
           }
         }
 

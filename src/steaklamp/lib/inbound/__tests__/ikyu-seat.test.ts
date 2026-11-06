@@ -29,6 +29,7 @@ vi.mock("@/steaklamp/lib/supabaseAdmin", () => {
     if (table === "stores") return { data: { id: "store-1", code: "steaklamp" }, error: null };
     if (table === "seats") return { data: SEATS, error: null };
     if (table === "seat_members") return { data: [], error: null };
+    if (table === "reservation_seats") return { data: [], error: null };
     if (op === "insert") return { data: { id: "new-1", status: "booked" }, error: null };
     if (op === "update") return { data: { id: state.existing?.id, status: "booked" }, error: null };
     return { data: state.existing, error: null }; // 既存予約(無ければ null)
@@ -36,11 +37,13 @@ vi.mock("@/steaklamp/lib/supabaseAdmin", () => {
 
   return {
     supabaseAdmin: {
+      rpc: async () => ({ data: null, error: null }),
       from(table: string) {
         let op = "select";
         const b: any = {
           select: () => b,
           eq: () => b,
+          in: () => b,
           gte: () => b,
           lte: () => b,
           order: () => b,

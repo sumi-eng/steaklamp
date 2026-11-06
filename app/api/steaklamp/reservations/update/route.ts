@@ -3,10 +3,12 @@ import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { isChristmasCourse } from "@/steaklamp/lib/christmas";
 import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
+import { loadSeatLinks, replaceSeatLinks } from "@/steaklamp/lib/reservationSeats";
 import {
-  evaluateSeatAssignment,
-  maxCap,
-  minCap,
+  effectiveSeatIds,
+  evaluateSeatSelection,
+  normalizeSeatIds,
+  sameSeatSet,
   type ReservationRow,
   type SeatMemberRow,
   type SeatRow,
@@ -45,8 +47,14 @@ const coursePriceSnapshot =
     const startAtRaw = String(body.startAt ?? "");
     const durationMinutes = Number(body.durationMinutes ?? 120);
     const notes = body.notes ? String(body.notes) : null;
-const seatId = String(body.seatId ?? "").trim();
-if (!seatId) return json({ ok: false, error: "seat_required" }, 400);
+    // 席は seatIds（複数なら自由連結）で受け取る。従来の seatId（1席）も使える。先頭が代表席。
+    let seatIds = normalizeSeatIds(body.seatIds);
+    if (seatIds.length === 0) {
+      const single = String(body.seatId ?? "").trim();
+      if (single) seatIds = [single];
+    }
+    if (seatIds.length === 0) return json({ ok: false, error: "seat_required" }, 400);
+    const seatId = seatIds[0];
 
 
     if (!id) return json({ ok: false, error: "id_required" }, 400);
@@ -71,7 +79,9 @@ if (!seatId) return json({ ok: false, error: "seat_required" }, 400);
       return json({ ok: false, error: "reservation_not_found" }, 404);
     }
 
-    const seatChanged = String(existing.seat_id ?? "") !== seatId;
+    const existingLinks = await loadSeatLinks([id]);
+    const existingSeatIds = effectiveSeatIds(existing, existingLinks);
+    const seatChanged = !sameSeatSet(existingSeatIds, seatIds) || String(existing.seat_id ?? "") !== seatId;
     const timeChanged =
       new Date(existing.start_at).getTime() !== startAt.getTime() ||
       Number(existing.duration_minutes ?? 120) !== durationMinutes;
@@ -95,42 +105,53 @@ if (!seatId) return json({ ok: false, error: "seat_required" }, 400);
         return json({ ok: false, error: "seat_check_failed" }, 500);
       }
 
-      const seat = ((seatsRes.data ?? []) as SeatRow[]).find((s) => String(s.id) === seatId);
-      if (!seat || seat.is_active === false) {
+      const allSeats = (seatsRes.data ?? []) as SeatRow[];
+      const chosen = seatIds.map((sid) => allSeats.find((s) => String(s.id) === sid));
+      if (chosen.some((s) => !s || s.is_active === false)) {
         return json({ ok: false, error: "seat_not_found" }, 404);
       }
 
-      const { fitsPersons, conflicts } = evaluateSeatAssignment({
-        seat,
+      const reservationRows = (reservationsRes.data ?? []) as ReservationRow[];
+      let seatLinks;
+      try {
+        seatLinks = await loadSeatLinks(reservationRows.map((r) => r.id));
+      } catch {
+        return json({ ok: false, error: "seat_check_failed" }, 500);
+      }
+
+      const evaluation = evaluateSeatSelection({
+        seatIds,
+        seats: allSeats,
         members: (membersRes.data ?? []) as SeatMemberRow[],
-        reservations: (reservationsRes.data ?? []) as ReservationRow[],
+        reservations: reservationRows,
+        seatLinks,
         persons,
         startAt,
         duration: durationMinutes,
         excludeReservationId: id,
       });
 
-      // 他の予約と重なる席には変更できない
-      if (conflicts.length > 0) {
-        const c = conflicts[0];
+      // 選んだ席のどれか1つでも他の予約と重なるときは変更できない
+      if (evaluation.conflicts.length > 0) {
+        const c = evaluation.conflicts[0];
         return json(
           {
             ok: false,
             error: "seat_conflict",
-            detail: `${seat.name} はこの時間帯に別の予約があります（${c.name ?? "予約"}様）。先にそちらの予約の席を変更してください。`,
+            detail: `${evaluation.label} はこの時間帯に別の予約があります（${c.name ?? "予約"}様）。先にそちらの予約の席を変更してください。`,
             conflict_reservation: { id: c.id, name: c.name, start_at: c.start_at },
           },
           409
         );
       }
 
-      // 人数が定員から外れる席は、スタッフが確認したときだけ変更できる
-      if (!fitsPersons && !confirmCapacityMismatch) {
+      // 人数が定員から外れる席・席の取りすぎは、スタッフが確認したときだけ変更できる
+      if (!evaluation.fitsPersons && !confirmCapacityMismatch) {
         return json(
           {
             ok: false,
             error: "persons_out_of_range",
-            detail: `${seat.name} は ${minCap(seat)}〜${maxCap(seat)}名の席です（${persons}名）。`,
+            detail: evaluation.message ?? `${evaluation.label} は${persons}名には合わない席です。`,
           },
           409
         );
@@ -167,6 +188,25 @@ course_price_snapshot: coursePriceSnapshot,
 
     if (error) {
       return json({ ok: false, error: "update_failed", detail: error.message }, 500);
+    }
+
+    // 連結を今回の選択に置き換える。1席に戻した・グループ席に選び直したときは連結の行を消す。
+    // 席が変わらないときは触らない（備考だけの編集などで連結を変えない）。ただし無効になった古い行は掃除する。
+    const staleLinks = (existingLinks.get(id)?.length ?? 0) > 0 && existingSeatIds.length <= 1;
+    if (seatChanged || staleLinks) {
+      try {
+        await replaceSeatLinks(id, seatIds);
+      } catch (linkError) {
+        console.error("replace reservation_seats failed", linkError);
+        return json(
+          {
+            ok: false,
+            error: "seat_link_failed",
+            detail: "席の連結の保存に失敗しました。もう一度保存してください。",
+          },
+          500
+        );
+      }
     }
 
     // クリスマスコースの日時・人数・コースを変えたときは、残り枠を数え直して満席・上限超過を知らせる

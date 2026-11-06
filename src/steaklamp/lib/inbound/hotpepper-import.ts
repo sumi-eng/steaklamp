@@ -2,7 +2,14 @@ import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
 import { sendLineReservationNotice, sendLineReviewNotice } from "@/steaklamp/lib/lineNotify";
 import { inferChristmasCourse, isChristmasCourse } from "@/steaklamp/lib/christmas";
 import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
-import { capacityMismatchMessage, chooseSeat, noSeatMessage } from "./seat-allocation";
+import {
+  capacityMismatchMessage,
+  chooseSeat,
+  effectiveSeatIds,
+  linkedSeatMismatchMessage,
+  noSeatMessage,
+} from "./seat-allocation";
+import { clearSeatLinks, loadSeatLinks } from "../reservationSeats";
 import type { ReservationRow, SeatMemberRow, SeatRow } from "./seat-allocation";
 import {
   applyPointNote,
@@ -104,10 +111,23 @@ export async function findSeat(args: {
   if (membersRes.error) throw membersRes.error;
   if (reservationsRes.error) throw reservationsRes.error;
 
+  // 他の予約の自由連結(reservation_seats)。変更される予約自身の連結も読み込む(窓の外の日時でも維持判定できるように)
+  const reservationRows = (reservationsRes.data ?? []) as ReservationRow[];
+  const seatLinks = await loadSeatLinks([
+    ...reservationRows.map((r) => r.id),
+    args.excludeReservationId,
+  ]);
+  const preferSeatIds =
+    args.preferSeatId && args.excludeReservationId
+      ? effectiveSeatIds({ id: args.excludeReservationId, seat_id: args.preferSeatId }, seatLinks)
+      : null;
+
   return chooseSeat({
     seats: (seatsRes.data ?? []) as SeatRow[],
     members: (membersRes.data ?? []) as SeatMemberRow[],
-    reservations: (reservationsRes.data ?? []) as ReservationRow[],
+    reservations: reservationRows,
+    seatLinks,
+    preferSeatIds,
     persons: args.persons,
     startAt,
     duration,
@@ -331,7 +351,9 @@ export async function importHotpepperReservationFromText(args: {
 
   const warningMessage = selectedSeat
     ? seatChoice.capacityMismatch
-      ? capacityMismatchMessage({ seat: selectedSeat, persons, sourceLabel: "ホットペッパー" })
+      ? seatChoice.keptSeatIds
+        ? linkedSeatMismatchMessage({ label: seatChoice.seatLabel ?? selectedSeat.name, persons, sourceLabel: "ホットペッパー" })
+        : capacityMismatchMessage({ seat: selectedSeat, persons, sourceLabel: "ホットペッパー" })
       : null
     : !seatChoice.reason
       ? null
@@ -411,6 +433,10 @@ warning_message: warningMessage,
         error: updateRes.error,
       };
     }
+// 席が決まり直した（連結を維持しなかった）ときは、古い連結を消して席が埋まったままにならないようにする
+if (!seatChoice.keptSeatIds) {
+  await clearSeatLinks(String(updateRes.data.id));
+}
 await notifyChristmasCapacity(store.id, updateRes.data.id, course.courseName);
 await sendLineReservationNotice({
   name: parsed.name,
@@ -418,7 +444,7 @@ await sendLineReservationNotice({
   email: null,
   persons,
   start_at: startAt.toISOString(),
-  seatName: selectedSeat?.name ?? "未割当",
+  seatName: seatChoice.seatLabel ?? selectedSeat?.name ?? "未割当",
   courseName: course.courseName,
   notes: notesText,
   source: "ホットペッパー",

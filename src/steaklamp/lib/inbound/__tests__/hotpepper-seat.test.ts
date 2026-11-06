@@ -21,6 +21,9 @@ const SEATS = SEAT_DEFS.map(([name, min, max], i) => ({
 const state = vi.hoisted(() => ({
   existing: null as any,
   updates: [] as any[],
+  others: [] as any[], // 同じ時間帯の他の予約
+  links: [] as any[], // reservation_seats の行
+  rpcCalls: [] as any[],
 }));
 
 vi.mock("@/steaklamp/lib/supabaseAdmin", () => {
@@ -28,17 +31,23 @@ vi.mock("@/steaklamp/lib/supabaseAdmin", () => {
     if (table === "stores") return { data: { id: "store-1", code: "steaklamp" }, error: null };
     if (table === "seats") return { data: SEATS, error: null };
     if (table === "seat_members") return { data: [], error: null };
+    if (table === "reservation_seats") return { data: state.links, error: null };
     if (op === "update") return { data: { id: state.existing.id, status: "booked" }, error: null };
     return { data: state.existing, error: null };
   };
 
   return {
     supabaseAdmin: {
+      rpc: async (name: string, args: any) => {
+        state.rpcCalls.push({ name, args });
+        return { data: null, error: null };
+      },
       from(table: string) {
         let op = "select";
         const b: any = {
           select: () => b,
           eq: () => b,
+          in: () => b,
           gte: () => b,
           lte: () => b,
           order: () => b,
@@ -53,7 +62,7 @@ vi.mock("@/steaklamp/lib/supabaseAdmin", () => {
           then: (ok: any, ng: any) =>
             Promise.resolve(
               table === "reservations"
-                ? { data: state.existing ? [state.existing] : [], error: null }
+                ? { data: [...(state.existing ? [state.existing] : []), ...state.others], error: null }
                 : result(table, op)
             ).then(ok, ng),
         };
@@ -178,6 +187,9 @@ describe("変更メールでの席の維持と警告文（取り込み全体）"
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-13T00:00:00+09:00"));
     state.updates = [];
+    state.others = [];
+    state.links = [];
+    state.rpcCalls = [];
     state.existing = {
       id: "res-2",
       status: "booked",
@@ -199,6 +211,35 @@ describe("変更メールでの席の維持と警告文（取り込み全体）"
     const result: any = await importHotpepperReservationFromText({ rawText: TABLE_MAIL, subject: SUBJECT });
     expect(result.assignedSeatName).toBe("左テーブル");
     expect(state.updates[0].seat_id).toBe("seat-左テーブル");
+  });
+
+  it("連結した席は、連結したすべてが空いていれば変更後もそのまま維持し、連結を消さない", async () => {
+    state.existing.seat_id = "seat-T1-1";
+    state.links = [
+      { reservation_id: "res-2", seat_id: "seat-T1-1" },
+      { reservation_id: "res-2", seat_id: "seat-T2-1" },
+    ];
+    const result: any = await importHotpepperReservationFromText({ rawText: TABLE_MAIL, subject: SUBJECT });
+    expect(state.updates[0].seat_id).toBe("seat-T1-1");
+    expect(result.assignmentStatus).toBe("assigned");
+    expect(state.rpcCalls).toEqual([]);
+  });
+
+  it("連結した席のうち1席が他の予約で埋まっていたら選び直し、古い連結を消す", async () => {
+    state.existing.seat_id = "seat-T1-1";
+    state.links = [
+      { reservation_id: "res-2", seat_id: "seat-T1-1" },
+      { reservation_id: "res-2", seat_id: "seat-T2-1" },
+    ];
+    state.others = [
+      { id: "other", seat_id: "seat-T2-1", start_at: "2026-10-22T10:00:00+00:00", duration_minutes: 120, status: "booked" },
+    ];
+    const result: any = await importHotpepperReservationFromText({ rawText: TABLE_MAIL, subject: SUBJECT });
+    expect(result.assignmentStatus).toBe("assigned");
+    expect(state.updates[0].seat_id).not.toBe("seat-T1-1");
+    expect(state.rpcCalls).toEqual([
+      { name: "replace_reservation_seats", args: { p_reservation_id: "res-2", p_seat_ids: [] } },
+    ]);
   });
 
   it("1名のテーブル席予約: 空いていても出ていた「満席」ではなく、実際の理由を警告する", async () => {

@@ -58,6 +58,7 @@ function buildCalendarDays(monthDate: Date) {
 type Reservation = {
   id: string;
   seatId: string;
+  seatIds?: string[];
   name: string;
   persons: number;
   startAt: string;
@@ -109,6 +110,7 @@ export default function ReservationListView() {
             (data.items ?? []).map((r: any) => ({
               id: r.id,
               seatId: r.seatId ?? r.seat_id ?? "",
+              seatIds: r.seatIds ?? undefined,
               name: r.title ?? r.name ?? "予約",
               persons: r.persons,
               startAt: r.startAt,
@@ -454,6 +456,7 @@ export default function ReservationListView() {
             reservation={{
               id: selected.id,
               seatId: (selected as any).seat_id ?? selected.seatId ?? "",
+              seatIds: selected.seatIds,
               title: selected.name,
               name: selected.name,
               phone: selected.phone,

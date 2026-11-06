@@ -4,7 +4,8 @@ import { inferChristmasCourse, isChristmasCourse } from "@/steaklamp/lib/christm
 import { afterChristmasReservationSaved } from "@/steaklamp/lib/christmas-server";
 import { findSeat } from "./hotpepper-import";
 import { detectSeatKind } from "./hotpepper-parser";
-import { capacityMismatchMessage, noSeatMessage } from "./seat-allocation";
+import { capacityMismatchMessage, linkedSeatMismatchMessage, noSeatMessage } from "./seat-allocation";
+import { clearSeatLinks } from "../reservationSeats";
 import { parseIkyuReservationMail } from "./ikyu-parser";
 
 function buildStartAt(date: string, time: string) {
@@ -276,7 +277,9 @@ export async function importIkyuReservationFromText(args: {
 
   const warningMessage = selectedSeat
     ? seatChoice.capacityMismatch
-      ? capacityMismatchMessage({ seat: selectedSeat, persons, sourceLabel: "一休" })
+      ? seatChoice.keptSeatIds
+        ? linkedSeatMismatchMessage({ label: seatChoice.seatLabel ?? selectedSeat.name, persons, sourceLabel: "一休" })
+        : capacityMismatchMessage({ seat: selectedSeat, persons, sourceLabel: "一休" })
       : null
     : !seatChoice.reason
       ? null
@@ -344,7 +347,7 @@ const noteLines = [
     email: null,
     persons,
     start_at: startAt.toISOString(),
-    seatName: selectedSeat?.name ?? "未割当",
+    seatName: seatChoice.seatLabel ?? selectedSeat?.name ?? "未割当",
     courseName: course.courseName,
     notes: notesText,
     source: "一休",
@@ -373,6 +376,10 @@ const noteLines = [
       };
     }
 
+    // 席が決まり直した（連結を維持しなかった）ときは、古い連結を消して席が埋まったままにならないようにする
+    if (!seatChoice.keptSeatIds) {
+      await clearSeatLinks(String(updateRes.data.id));
+    }
     await notifyChristmasCapacity(store.id, updateRes.data.id, course.courseName);
     await sendLineReservationNotice(lineNotice);
 

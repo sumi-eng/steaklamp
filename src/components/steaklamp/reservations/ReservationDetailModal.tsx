@@ -2,22 +2,14 @@
 
 import { adminFetch } from "@/steaklamp/lib/adminClient";
 
-import { useEffect, useState } from "react";
-
-type SeatCandidate = {
-  id: string;
-  name: string;
-  capacityLabel: string;
-  physicalSeats: string;
-  kind?: "table" | "counter";
-  free?: boolean;
-  fitsPersons?: boolean;
-  conflictWith?: string | null;
-};
+import { useState } from "react";
+import SeatPicker from "./SeatPicker";
 
 type ReservationDetail = {
   id: string;
   seatId: string;
+  // 連結した席すべて（先頭が代表席）。なければ seatId だけ
+  seatIds?: string[];
   title: string;
   name?: string;
   phone?: string | null;
@@ -65,7 +57,13 @@ export default function ReservationDetailModal({
     reservation.durationMinutes
   );
   const [notes, setNotes] = useState(reservation.notes ?? "");
-  const [seatId, setSeatId] = useState(reservation.seatId);
+  const [seatIds, setSeatIds] = useState<string[]>(
+    reservation.seatIds && reservation.seatIds.length > 0
+      ? reservation.seatIds
+      : reservation.seatId
+        ? [reservation.seatId]
+        : []
+  );
 
 const [courseName, setCourseName] = useState(
   reservation.courseNameSnapshot ?? "席のみ"
@@ -76,70 +74,17 @@ const [coursePrice, setCoursePrice] = useState<number | null>(
 );
 
 
-  const [candidates, setCandidates] = useState<SeatCandidate[]>([]);
-  const [loadingSeats, setLoadingSeats] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // 人数・日時・滞在分数に合わせて、席の候補（空き状況つき）を自動で読み込む
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      if (!startAt || !persons || !durationMinutes) return;
-      setLoadingSeats(true);
-
-      try {
-        const res = await adminFetch("/api/steaklamp/seats/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            persons,
-            startAt: `${startAt}:00+09:00`,
-            duration: durationMinutes,
-            counterOk: true,
-            includeAll: true,
-            excludeReservationId: reservation.id,
-          }),
-        });
-
-        const data = await res.json();
-        if (cancelled) return;
-        setCandidates(data.ok ? data.seats ?? [] : []);
-      } catch {
-        if (!cancelled) setCandidates([]);
-      } finally {
-        if (!cancelled) setLoadingSeats(false);
-      }
-    }
-
-    const timer = setTimeout(load, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [persons, startAt, durationMinutes, reservation.id]);
-
-  const selectedCandidate = candidates.find((c) => c.id === seatId) ?? null;
-
   async function handleUpdate() {
-    if (!seatId) {
+    if (seatIds.length === 0) {
       alert("席を選んでください");
       return;
     }
 
-    // 人数に合わない席は、確認したうえで変更できる
+    // 人数に合わない席・席の取りすぎは、サーバーが判定し、確認したうえで変更できる
     let confirmCapacityMismatch = false;
-    if (selectedCandidate && selectedCandidate.fitsPersons === false) {
-      if (
-        !confirm(
-          `${selectedCandidate.name}（${selectedCandidate.capacityLabel}）は${persons}名には合わない席です。このまま変更しますか？`
-        )
-      ) {
-        return;
-      }
-      confirmCapacityMismatch = true;
-    }
 
     setSaving(true);
 
@@ -149,7 +94,7 @@ const [coursePrice, setCoursePrice] = useState<number | null>(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: reservation.id,
-          seatId,
+          seatIds,
           confirmCapacityMismatch,
           name,
           phone,
@@ -167,7 +112,7 @@ course_price_snapshot: coursePrice,
       let res = await send();
       let data = await res.json();
 
-      // 候補を読み込む前に保存した場合など、サーバー側で定員外と判定されたときも確認する
+      // 人数が席の定員から外れる・席を取りすぎのときは、確認してから保存する
       if (data.error === "persons_out_of_range") {
         if (!confirm(`${data.detail}
 このまま変更しますか？`)) return;
@@ -324,59 +269,15 @@ course_price_snapshot: coursePrice,
             </div>
 
             <div className="mt-4">
-              <div className="mb-1 text-sm font-bold text-stone-700">席</div>
-              <select
-                value={seatId}
-                onChange={(e) => setSeatId(e.target.value)}
-                className="w-full rounded-2xl border border-stone-300 px-4 py-3"
-              >
-                {!seatId && <option value="">席を選択してください</option>}
-                {!candidates.some((c) => c.id === reservation.seatId) && reservation.seatId && (
-                  <option value={reservation.seatId}>{reservation.seatName}（現在）</option>
-                )}
-
-                {(["table", "counter"] as const).map((kind) => (
-                  <optgroup key={kind} label={kind === "table" ? "テーブル席" : "カウンター席"}>
-                    {candidates
-                      .filter((seat) => (seat.kind ?? "table") === kind)
-                      .map((seat) => {
-                        const isCurrent = seat.id === reservation.seatId;
-                        const blocked = seat.free === false;
-                        const label = [
-                          seat.name,
-                          `（${seat.capacityLabel}）`,
-                          seat.physicalSeats !== seat.name ? ` ${seat.physicalSeats}` : "",
-                          isCurrent ? " 現在" : "",
-                          blocked ? ` ×予約済み（${seat.conflictWith}様）` : "",
-                          !blocked && seat.fitsPersons === false ? " ⚠定員外" : "",
-                        ].join("");
-
-                        return (
-                          <option key={seat.id} value={seat.id} disabled={blocked && !isCurrent}>
-                            {label}
-                          </option>
-                        );
-                      })}
-                  </optgroup>
-                ))}
-              </select>
-
-              {selectedCandidate && selectedCandidate.free === false && (
-                <div className="mt-1 text-xs font-bold text-red-600">
-                  この席は同じ時間帯に別の予約があるため、変更できません。
-                </div>
-              )}
-              {selectedCandidate && selectedCandidate.free !== false && selectedCandidate.fitsPersons === false && (
-                <div className="mt-1 text-xs font-bold text-amber-600">
-                  {persons}名には合わない席です（{selectedCandidate.capacityLabel}）。変更時に確認が出ます。
-                </div>
-              )}
-
-              <div className="mt-1 text-xs text-stone-500">
-                {loadingSeats
-                  ? "候補席を読み込み中..."
-                  : "同じ時間帯に空いている席を選べます。予約済みの席は選べません。"}
-              </div>
+              <SeatPicker
+                persons={persons}
+                startAt={`${startAt}:00+09:00`}
+                duration={durationMinutes}
+                excludeReservationId={reservation.id}
+                value={seatIds}
+                onChange={setSeatIds}
+                currentSeatLabel={reservation.seatName}
+              />
             </div>
 
             <label className="mt-4 block">

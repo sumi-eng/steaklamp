@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
+import { effectiveSeatIds } from "@/steaklamp/lib/inbound/seat-allocation";
+import { loadSeatLinks } from "@/steaklamp/lib/reservationSeats";
 
 export const runtime = "nodejs";
 
@@ -184,6 +186,13 @@ export async function POST(req: Request) {
       );
     }
 
+    let seatLinks;
+    try {
+      seatLinks = await loadSeatLinks((reservations ?? []).map((r: { id: string }) => r.id));
+    } catch (e) {
+      return json({ ok: false, error: "load_seat_links_failed" }, 500);
+    }
+
     const seatRows = (seats ?? []) as SeatRow[];
     const memberRows = (seatMembers ?? []) as SeatMemberRow[];
     const ruleRows = (seatRules ?? []) as SeatRuleRow[];
@@ -280,7 +289,9 @@ export async function POST(req: Request) {
       for (const reservation of overlappingReservations) {
         if (!reservation.seat_id) continue;
 
-        const reservedPhysicalSeatIds = getPhysicalSeatIds(reservation.seat_id);
+        // 自由連結した予約は、連結したすべての席を使用中として数える
+        const reservedSeatIds = effectiveSeatIds(reservation, seatLinks);
+        const reservedPhysicalSeatIds = reservedSeatIds.flatMap((sid) => getPhysicalSeatIds(sid));
         const hasPhysicalConflict = candidatePhysicalSeatIds.some((id) =>
           reservedPhysicalSeatIds.includes(id)
         );
@@ -291,7 +302,9 @@ export async function POST(req: Request) {
           break;
         }
 
-        const triggeredRules = activeRulesByTriggerSeatId.get(reservation.seat_id) ?? [];
+        const triggeredRules = reservedSeatIds.flatMap(
+          (sid) => activeRulesByTriggerSeatId.get(sid) ?? []
+        );
         for (const rule of triggeredRules) {
           if (rule.affected_seat_id !== candidate.id) continue;
 

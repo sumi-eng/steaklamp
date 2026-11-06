@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/steaklamp/lib/adminAuth";
 import { supabaseAdmin } from "@/steaklamp/lib/supabaseAdmin";
+import { effectiveSeatIds } from "@/steaklamp/lib/inbound/seat-allocation";
+import { loadSeatLinks } from "@/steaklamp/lib/reservationSeats";
 
 export const runtime = "nodejs";
 
@@ -65,10 +67,18 @@ export async function GET() {
     );
 
     // 整形
-    const items = (reservations ?? []).map((r) => ({
-      ...r,
-      seat_name: seatMap.get(r.seat_id) ?? r.seat_id,
-    }));
+    // 自由連結した予約は「T1-1・T1-2・C3」のように連結した席名を並べる
+    const seatLinks = await loadSeatLinks((reservations ?? []).map((r) => r.id));
+    const items = (reservations ?? []).map((r) => {
+      const linked = effectiveSeatIds(r, seatLinks);
+      return {
+        ...r,
+        seat_name:
+          linked.length > 1
+            ? linked.map((sid) => seatMap.get(sid) ?? sid).join("・")
+            : seatMap.get(r.seat_id) ?? r.seat_id,
+      };
+    });
 
     return NextResponse.json({ ok: true, items });
 
