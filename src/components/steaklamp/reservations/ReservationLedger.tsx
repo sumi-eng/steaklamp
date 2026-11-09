@@ -9,6 +9,11 @@ import ReservationCreateModal from "./ReservationCreateModal";
 import ReservationDetailModal from "./ReservationDetailModal";
 import ChristmasDayPanel from "./ChristmasDayPanel";
 import { isChristmasCourse } from "@/steaklamp/lib/christmas";
+import {
+  TONE_STYLES,
+  getReservationTone,
+  realNoteLines,
+} from "@/steaklamp/lib/reservationTone";
 
 function formatDateKey(date: Date) {
   const y = date.getFullYear();
@@ -691,6 +696,15 @@ function openClosureModal() {
 )}
 
 
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-stone-700">
+          {(["red", "yellow", "blue"] as const).map((t) => (
+            <span key={t} className="inline-flex items-center gap-1.5">
+              <span className={`inline-block h-3.5 w-3.5 rounded border ${TONE_STYLES[t].swatch}`} />
+              {TONE_STYLES[t].label}
+            </span>
+          ))}
+        </div>
+
         <div className="overflow-x-auto rounded-3xl border border-stone-200 bg-white shadow-sm">
            <div className="grid min-w-[980px]"
   style={{
@@ -738,7 +752,7 @@ function openClosureModal() {
             </div>
 
             <div
-              className="relative"
+              className="relative overflow-hidden"
               style={{
                 gridColumn: `2 / span ${totalSlots}`,
                 height: `${rows.length * rowHeight}px`,
@@ -800,47 +814,63 @@ function openClosureModal() {
                 return runs.map(([topRow, bottomRow], runIndex) => {
                 const rowSpan = bottomRow - topRow + 1;
 
+                const courseName =
+                  reservation.courseNameSnapshot ?? reservation.course_name_snapshot ?? null;
+                const tone = getReservationTone({
+                  status: reservation.status,
+                  notes: reservation.notes,
+                  courseName,
+                });
+                const toneStyle = TONE_STYLES[tone];
+                const noteText = realNoteLines(reservation.notes).join(" / ");
+
+                // 終了時刻（または表の右端）で枠を切る
+                const endIndex = Math.min(startIndex + reservation.slots, totalSlots);
+
                 return (
                   <div
                     key={`${reservation.id}-${runIndex}`}
                     onClick={() => setSelectedReservation(reservation)}
-                    className="absolute cursor-pointer rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800 shadow-sm hover:ring-2 hover:ring-rose-200"
+                    title={reservation.notes ?? undefined}
+                    className={`absolute cursor-pointer overflow-hidden rounded-xl border px-2 py-[3px] shadow-sm hover:ring-2 ${toneStyle.box}`}
                     style={{
-                      top: `${topRow * rowHeight + 8}px`,
-                      height: `${rowSpan * rowHeight - 16}px`,
-                      left: `calc(${(startIndex / totalSlots) * 100}% + 4px)`,
-                      width: `calc(${(reservation.slots / totalSlots) * 100}% - 8px)`,
+                      top: `${topRow * rowHeight + 3}px`,
+                      height: `${rowSpan * rowHeight - 6}px`,
+                      left: `calc(${(startIndex / totalSlots) * 100}% + 2px)`,
+                      width: `calc(${((endIndex - startIndex) / totalSlots) * 100}% - 4px)`,
                     }}
                   >
-                    <div className="text-[12px] font-semibold leading-tight text-rose-700">
-  {reservation.start} {reservation.persons}名 {reservation.seatName}
-</div>
+                    <div
+                      className={`flex items-center gap-1 whitespace-nowrap text-[12px] font-bold leading-tight ${toneStyle.sub}`}
+                    >
+                      <span className="min-w-0 truncate">
+                        {reservation.start} {reservation.persons}名 {reservation.seatName}
+                      </span>
+                      {isChristmasCourse(courseName) ? (
+                        <span className="shrink-0 rounded-full bg-rose-600 px-1.5 text-[10px] font-extrabold leading-4 text-white">
+                          🎄 クリスマス
+                        </span>
+                      ) : null}
+                    </div>
 
-<div className="mt-1 text-[14px] font-bold leading-tight">
-  {reservation.title}
-</div>
+                    <div className="truncate text-[14px] font-extrabold leading-tight">
+                      {reservation.title}
+                      {courseName ? (
+                        <span className={`ml-1 text-[12px] font-bold ${toneStyle.sub}`}>
+                          ／{courseName}
+                        </span>
+                      ) : null}
+                    </div>
 
-{isChristmasCourse(reservation.courseNameSnapshot) ? (
-  <div className="mt-1 inline-block rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-extrabold leading-tight text-white">
-    🎄 クリスマス
-  </div>
-) : null}
-
-{reservation.courseNameSnapshot ? (
-  <div className="mt-1 text-[12px] font-bold leading-tight text-rose-700">
-    コース：{reservation.courseNameSnapshot}
-    {reservation.coursePriceSnapshot
-      ? `（${Number(reservation.coursePriceSnapshot).toLocaleString()}円）`
-      : ""}
-  </div>
-) : null}
-
-{reservation.notes ? (
-  <div className="mt-2 whitespace-pre-wrap break-words rounded-xl bg-white/70 px-2 py-1 text-[13px] font-semibold leading-snug text-rose-700">
-    備考：{reservation.notes}
-  </div>
-) : null}
-
+                    {noteText ? (
+                      <div
+                        className={`break-all text-[12px] font-semibold leading-tight ${toneStyle.sub} ${
+                          rowSpan > 1 ? "line-clamp-2" : "line-clamp-1"
+                        }`}
+                      >
+                        {noteText}
+                      </div>
+                    ) : null}
                   </div>
                 );
                 });
